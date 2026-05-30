@@ -120,7 +120,7 @@ export const StudentDashboard: React.FC = () => {
           {/* Streak */}
           <div className="flex items-center space-x-2.5">
             <div className="w-10 h-10 rounded-xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center text-orange-400 shadow-md">
-              <Flame className="w-5 h-5 animate-pulse" />
+              <Flame className="w-5 h-5 " />
             </div>
             <div>
               <span className="text-[10px] text-slate-500 block uppercase font-bold tracking-wider">Practice Streak</span>

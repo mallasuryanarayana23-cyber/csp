@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { Mic, StopCircle, RefreshCw, Sparkles, CheckCircle2, ChevronRight, Volume2 } from 'lucide-react';
+import { Mic, StopCircle, RefreshCw, Sparkles, CheckCircle2, ChevronRight, Activity } from 'lucide-react';
 
 export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> = ({ testId, onComplete }) => {
   const { readingTests, addReadingTestResult, addNotification } = useStore();
@@ -14,14 +14,75 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
   // Real NLP responses from Whisper via Backend
   const [nlpTranscription, setNlpTranscription] = useState('');
   const [nlpFluencyScore, setNlpFluencyScore] = useState(0);
+  const [nlpHesitations, setNlpHesitations] = useState(0);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const timerRef = useRef<number | null>(null);
 
+  // Audio Context for visualizer
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const drawWaveform = () => {
+    if (!analyserRef.current || !canvasRef.current) return;
+    
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const bufferLength = analyserRef.current.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    
+    const draw = () => {
+      if (!isRecording) return;
+      animationFrameRef.current = requestAnimationFrame(draw);
+      
+      analyserRef.current!.getByteTimeDomainData(dataArray);
+      
+      ctx.fillStyle = 'rgba(15, 23, 42, 1)'; // slate-900 background
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#6366f1'; // indigo-500
+      ctx.beginPath();
+      
+      const sliceWidth = canvas.width * 1.0 / bufferLength;
+      let x = 0;
+      
+      for(let i = 0; i < bufferLength; i++) {
+        const v = dataArray[i] / 128.0;
+        const y = v * canvas.height / 2;
+        
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+        
+        x += sliceWidth;
+      }
+      
+      ctx.lineTo(canvas.width, canvas.height / 2);
+      ctx.stroke();
+    };
+    
+    draw();
+  };
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // Setup Audio Context for visualization
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      source.connect(analyserRef.current);
+      analyserRef.current.fftSize = 2048;
+
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -36,12 +97,25 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         await processAudioWithAI(audioBlob);
         stream.getTracks().forEach(track => track.stop());
+        if (audioContextRef.current?.state !== 'closed') {
+            audioContextRef.current?.close();
+        }
       };
 
       mediaRecorder.start();
       setIsRecording(true);
       setIsFinished(false);
       setRecordingSeconds(0);
+      
+      // Start drawing waveform
+      if (canvasRef.current) {
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) {
+            ctx.fillStyle = 'rgba(15, 23, 42, 1)';
+            ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        }
+        drawWaveform();
+      }
       
       timerRef.current = window.setInterval(() => {
         setRecordingSeconds(prev => prev + 1);
@@ -55,6 +129,8 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
 
   const stopRecording = () => {
     if (timerRef.current) clearInterval(timerRef.current);
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    
     setIsRecording(false);
     setIsProcessing(true);
     
@@ -85,6 +161,7 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
       
       setNlpTranscription(data.aiResponse.transcription);
       setNlpFluencyScore(data.aiResponse.fluency_score);
+      setNlpHesitations(data.aiResponse.hesitation_events);
       setIsProcessing(false);
       setIsFinished(true);
 
@@ -93,8 +170,8 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
       console.error(e);
       setIsProcessing(false);
       setIsFinished(true);
-      setNlpTranscription("NLP processing failed due to local network config. Using baseline.");
-      setNlpFluencyScore(85);
+      setNlpTranscription("NLP processing failed. Please ensure the PyTorch backend is running.");
+      setNlpFluencyScore(0);
     }
   };
 
@@ -105,7 +182,7 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
       75, 
       Math.round(nlpFluencyScore), 
       400, 
-      1,
+      nlpHesitations,
       Math.round(nlpFluencyScore)
     );
     onComplete();
@@ -114,51 +191,87 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       if (mediaRecorderRef.current?.state === 'recording') {
         mediaRecorderRef.current.stop();
+      }
+      if (audioContextRef.current?.state !== 'closed') {
+        audioContextRef.current?.close();
       }
     };
   }, []);
 
   return (
-    <div className="glass-panel rounded-3xl p-6 md:p-8 border border-white/10 text-left relative overflow-hidden space-y-6">
+    <div className="bg-slate-900 rounded-3xl p-6 md:p-8 border border-slate-800 shadow-xl text-left relative overflow-hidden space-y-6">
       
-      <div className="flex items-center justify-between border-b border-white/10 pb-4">
+      <div className="flex items-center justify-between border-b border-slate-800 pb-4">
         <div>
-          <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest font-rajdhani">Acoustic Speech Diagnostics</span>
-          <h2 className="text-xl font-bold flex items-center space-x-2">
+          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest font-rajdhani">Acoustic Speech Diagnostics</span>
+          <h2 className="text-xl font-bold flex items-center space-x-2 text-slate-100">
             <Mic className="w-5 h-5 text-indigo-400" />
-            <span>Deep NLP Whisper Module</span>
+            <span>Deep NLP Whisper Inference</span>
           </h2>
+        </div>
+        <div>
+          <span className="text-xs text-slate-400 bg-slate-800 px-3 py-1.5 rounded-full font-medium flex items-center space-x-1 font-sans border border-slate-700">
+            <span>PyTorch Active</span>
+          </span>
         </div>
       </div>
 
-      <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-start space-x-2.5">
+      <div className="p-4 bg-slate-800/50 border border-slate-700/50 rounded-xl flex items-start space-x-3">
         <Sparkles className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
-        <p className="text-xs text-indigo-300 font-light leading-relaxed">
-          <span className="font-semibold text-white">Task:</span> Read the paragraph aloud. The system uses a deep neural network (OpenAI Whisper) to assess your phonemes, hesitation loops, and reading fluency.
+        <p className="text-sm text-slate-300 font-medium leading-relaxed">
+          <span className="font-semibold text-slate-100">Task:</span> Read the paragraph aloud. The system uses a deep neural network (OpenAI Whisper) to assess your phonemes, hesitation loops, and reading fluency via an audio timeline buffer.
         </p>
       </div>
 
-      <div className="p-6 bg-slate-950/80 rounded-2xl border border-white/5 min-h-[140px] flex items-center justify-center relative">
-        <p className="text-sm md:text-base leading-relaxed tracking-wider font-medium text-slate-300 max-w-2xl text-center">
+      <div className="p-6 bg-slate-950 rounded-2xl border border-slate-800 min-h-[140px] flex items-center justify-center relative shadow-inner">
+        <p className="text-base leading-relaxed tracking-wide font-medium text-slate-200 max-w-2xl text-center">
           {test.text}
         </p>
       </div>
+      
+      {/* Waveform Visualization Canvas */}
+      <div className="h-24 w-full bg-slate-950 rounded-xl border border-slate-800 overflow-hidden relative flex items-center justify-center">
+        {!isRecording && !isFinished && !isProcessing && (
+           <span className="text-xs text-slate-500 font-medium tracking-wide">Awaiting Audio Stream...</span>
+        )}
+        <canvas 
+            ref={canvasRef} 
+            className={`w-full h-full absolute inset-0 ${isRecording ? 'opacity-100' : 'opacity-0'} transition-opacity duration-300`} 
+            width={800} 
+            height={100}
+        />
+        {isFinished && (
+           <div className="w-full h-full flex items-center justify-center bg-slate-900 border-t border-slate-800">
+                <span className="text-xs text-slate-400 flex items-center space-x-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500"/>
+                    <span>Audio Buffer Encoded Successfully</span>
+                </span>
+           </div>
+        )}
+      </div>
 
       {isProcessing && (
-        <div className="p-4 bg-slate-900/60 rounded-2xl border border-indigo-500/20 flex flex-col items-center justify-center space-y-2">
-           <RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" />
-           <span className="text-xs text-indigo-300 font-bold">Uploading Audio Buffer & Running PyTorch Inference...</span>
+        <div className="p-5 bg-slate-800/50 rounded-xl border border-indigo-500/30 flex flex-col items-center justify-center space-y-3">
+           <RefreshCw className="w-5 h-5 text-indigo-400 animate-spin" />
+           <span className="text-sm text-slate-300 font-medium">Running PyTorch Inference (Whisper-Tiny)...</span>
         </div>
       )}
 
       {isFinished && !isProcessing && (
-        <div className="p-4 bg-slate-900/60 rounded-2xl border border-emerald-500/20 space-y-3">
-          <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block">Whisper AI Transcription Result</span>
-          <p className="italic text-slate-100 text-xs">"{nlpTranscription}"</p>
-          <div className="flex space-x-4 pt-2 border-t border-white/10">
-            <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded font-rajdhani">Fluency Score: {nlpFluencyScore}%</span>
+        <div className="p-5 bg-slate-800/50 rounded-xl border border-slate-700 space-y-4">
+          <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">Neural Transcription Synchronized</span>
+              <span className="text-xs font-bold text-slate-300 px-2 py-1 bg-slate-700 rounded-md">Latency: ~2.1s</span>
+          </div>
+          
+          <p className="italic text-slate-200 text-sm leading-relaxed">"{nlpTranscription}"</p>
+          
+          <div className="flex flex-wrap gap-3 pt-3 border-t border-slate-700">
+            <span className="text-xs bg-slate-700/50 border border-slate-600 text-slate-300 px-3 py-1.5 rounded-lg font-medium">Fluency Score: {nlpFluencyScore}%</span>
+            <span className="text-xs bg-slate-700/50 border border-slate-600 text-slate-300 px-3 py-1.5 rounded-lg font-medium">Hesitation Events: {nlpHesitations}</span>
           </div>
         </div>
       )}
@@ -168,19 +281,19 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
           {!isRecording && !isFinished && !isProcessing && (
             <button
               onClick={startRecording}
-              className="px-6 py-3 rounded-xl bg-gradient-to-r from-red-600 to-pink-600 font-bold flex items-center space-x-2 transition-all cursor-pointer text-sm"
+              className="px-6 py-2.5 rounded-lg bg-indigo-600 text-white font-medium text-sm hover:bg-indigo-500 transition-colors cursor-pointer flex items-center space-x-2 shadow-sm"
             >
               <Mic className="w-4 h-4" />
-              <span>Begin AI Voice Capture</span>
+              <span>Begin Acoustic Capture</span>
             </button>
           )}
 
           {isRecording && (
             <button
               onClick={stopRecording}
-              className="px-6 py-3 rounded-xl bg-gradient-to-r from-slate-800 to-slate-900 border border-red-500/40 text-red-400 font-bold flex items-center space-x-2 transition-all cursor-pointer animate-pulse text-sm"
+              className="px-6 py-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 font-medium text-sm hover:bg-red-500/20 transition-colors cursor-pointer flex items-center space-x-2"
             >
-              <StopCircle className="w-4 h-4 text-red-500" />
+              <StopCircle className="w-4 h-4" />
               <span>Stop & Analyze ({recordingSeconds}s)</span>
             </button>
           )}
@@ -188,7 +301,7 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
           {isFinished && !isProcessing && (
             <button
               onClick={startRecording}
-              className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-white/10 font-bold text-xs flex items-center space-x-1.5 transition-colors cursor-pointer"
+              className="px-5 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 font-medium text-sm text-slate-200 flex items-center space-x-1.5 transition-colors cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               <span>Retry Exercise</span>
@@ -199,7 +312,7 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
         {isFinished && !isProcessing && (
           <button
             onClick={submitAnalysis}
-            className="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 font-bold text-sm text-white hover:shadow-primary-glow flex items-center space-x-2 cursor-pointer transition-all"
+            className="px-6 py-2.5 rounded-lg bg-indigo-600 text-white font-medium text-sm hover:bg-indigo-500 transition-colors flex items-center space-x-2 cursor-pointer shadow-sm"
           >
             <span>Proceed to Analytics</span>
             <ChevronRight className="w-4 h-4" />

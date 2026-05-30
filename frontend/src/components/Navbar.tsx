@@ -102,7 +102,7 @@ export const Navbar: React.FC = () => {
             onClick={() => setShowAccessDropdown(!showAccessDropdown)}
             className={`p-2.5 rounded-xl border transition-all duration-300 ${
               showAccessDropdown || Object.values(accessibility).some(v => v === true)
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm shadow-emerald-500/20 animate-pulse-glow' 
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm shadow-emerald-500/20 ' 
                 : 'bg-slate-900/60 text-slate-300 border-white/5 hover:text-white'
             }`}
             title="Accessibility Controls"

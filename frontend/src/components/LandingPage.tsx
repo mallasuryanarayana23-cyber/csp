@@ -107,7 +107,7 @@ export const LandingPage: React.FC<{ onEnterDashboard: () => void }> = ({ onEnte
         <section className="text-center space-y-8 max-w-4xl mx-auto pt-6">
           
           {/* Decorative Tag */}
-          <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-semibold uppercase tracking-wider animate-pulse-glow">
+          <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-semibold uppercase tracking-wider ">
             <Sparkles className="w-3.5 h-3.5" />
             <span>Patent-Pending Cognitive Detection Architecture</span>
           </div>
@@ -137,7 +137,7 @@ export const LandingPage: React.FC<{ onEnterDashboard: () => void }> = ({ onEnte
                 login('sophia@neurolearn.org', 'student');
                 onEnterDashboard();
               }}
-              className="w-full sm:w-auto px-8 py-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 font-bold hover:shadow-primary-glow hover:scale-102 transition-all duration-300 flex items-center justify-center space-x-2 group cursor-pointer"
+              className="w-full sm:w-auto px-8 py-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 font-bold hover:shadow-md hover:scale-102 transition-all duration-300 flex items-center justify-center space-x-2 group cursor-pointer"
             >
               <span>Explore Student Cockpit</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -220,7 +220,7 @@ export const LandingPage: React.FC<{ onEnterDashboard: () => void }> = ({ onEnte
           <div className="grid md:grid-cols-3 gap-6 text-left">
             
             {/* Gaze Tracker Card */}
-            <div className="glass-panel hover:glass-panel-glow p-6 rounded-2xl border border-white/10 transition-all duration-300 space-y-4 group">
+            <div className="glass-panel hover:bg-slate-900 border border-slate-800 p-6 rounded-2xl border border-white/10 transition-all duration-300 space-y-4 group">
               <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 group-hover:scale-105 transition-transform duration-300">
                 <Eye className="w-5 h-5" />
               </div>
@@ -231,7 +231,7 @@ export const LandingPage: React.FC<{ onEnterDashboard: () => void }> = ({ onEnte
             </div>
 
             {/* Voice Fluency Card */}
-            <div className="glass-panel hover:glass-panel-glow p-6 rounded-2xl border border-white/10 transition-all duration-300 space-y-4 group">
+            <div className="glass-panel hover:bg-slate-900 border border-slate-800 p-6 rounded-2xl border border-white/10 transition-all duration-300 space-y-4 group">
               <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400 group-hover:scale-105 transition-transform duration-300">
                 <Mic className="w-5 h-5" />
               </div>
@@ -242,7 +242,7 @@ export const LandingPage: React.FC<{ onEnterDashboard: () => void }> = ({ onEnte
             </div>
 
             {/* Keystroke Dynamics Card */}
-            <div className="glass-panel hover:glass-panel-glow p-6 rounded-2xl border border-white/10 transition-all duration-300 space-y-4 group">
+            <div className="glass-panel hover:bg-slate-900 border border-slate-800 p-6 rounded-2xl border border-white/10 transition-all duration-300 space-y-4 group">
               <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform duration-300">
                 <Keyboard className="w-5 h-5" />
               </div>
@@ -326,7 +326,7 @@ export const LandingPage: React.FC<{ onEnterDashboard: () => void }> = ({ onEnte
         </section>
 
         {/* 6. Footer & Call to Action (CTA) Section */}
-        <section className="glass-panel-glow rounded-3xl p-8 md:p-12 border border-white/10 text-center relative overflow-hidden space-y-6">
+        <section className="bg-slate-900 border border-slate-800 rounded-3xl p-8 md:p-12 border border-white/10 text-center relative overflow-hidden space-y-6">
           <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 via-transparent to-emerald-500/5 pointer-events-none"></div>
           <h2 className="text-3xl md:text-5xl font-extrabold">Begin Early Screening Support Today</h2>
           <p className="text-slate-300 text-sm md:text-base max-w-xl mx-auto font-light leading-relaxed">
@@ -339,7 +339,7 @@ export const LandingPage: React.FC<{ onEnterDashboard: () => void }> = ({ onEnte
                 login('sophia@neurolearn.org', 'student');
                 onEnterDashboard();
               }}
-              className="w-full sm:w-auto px-8 py-4 rounded-xl bg-white text-slate-900 font-bold hover:shadow-accent-glow hover:scale-102 transition-all duration-300 cursor-pointer"
+              className="w-full sm:w-auto px-8 py-4 rounded-xl bg-white text-slate-900 font-bold hover:shadow-md hover:scale-102 transition-all duration-300 cursor-pointer"
             >
               Start Student Evaluation
             </button>

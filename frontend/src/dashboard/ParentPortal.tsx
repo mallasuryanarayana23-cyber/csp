@@ -55,7 +55,7 @@ export const ParentPortal: React.FC = () => {
           {/* Complete */}
           <div className="flex items-center space-x-2.5 pl-4 border-l border-white/10">
             <div className="w-10 h-10 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 shadow-md">
-              <Heart className="w-5 h-5 animate-pulse text-purple-400" />
+              <Heart className="w-5 h-5  text-purple-400" />
             </div>
             <div>
               <span className="text-[10px] text-slate-500 block uppercase font-bold tracking-wider">Support Level</span>

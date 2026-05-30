@@ -238,7 +238,7 @@ export const TypingModule: React.FC<{ testId: string; onComplete: () => void }> 
           {!isStarted && (
             <button
               onClick={handleStart}
-              className="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 font-bold hover:shadow-primary-glow hover:scale-102 flex items-center space-x-2 transition-all cursor-pointer"
+              className="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 font-bold hover:shadow-md hover:scale-102 flex items-center space-x-2 transition-all cursor-pointer"
             >
               <Play className="w-4 h-4" />
               <span>Initialize Screening Test</span>
@@ -266,7 +266,7 @@ export const TypingModule: React.FC<{ testId: string; onComplete: () => void }> 
         {isCompleted && (
           <button
             onClick={submitMetrics}
-            className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 font-bold text-sm text-white hover:shadow-accent-glow flex items-center space-x-2 cursor-pointer transition-all"
+            className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 font-bold text-sm text-white hover:shadow-md flex items-center space-x-2 cursor-pointer transition-all"
           >
             <span>Proceed to AI Scoring</span>
             <ChevronRight className="w-4 h-4" />

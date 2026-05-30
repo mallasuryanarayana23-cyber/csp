@@ -115,13 +115,13 @@ export const App: React.FC = () => {
         {!chatOpen ? (
           <button
             onClick={() => setChatOpen(true)}
-            className="w-14 h-14 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 border border-indigo-400/30 text-white flex items-center justify-center shadow-primary-glow hover:scale-105 transition-transform duration-300 cursor-pointer"
+            className="w-14 h-14 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 border border-indigo-400/30 text-white flex items-center justify-center shadow-md hover:scale-105 transition-transform duration-300 cursor-pointer"
             title="Ask NeuroBot AI assistant"
           >
             <HelpCircle className="w-7 h-7" />
           </button>
         ) : (
-          <div className="w-80 rounded-2xl glass-panel-glow border border-white/20 shadow-2xl p-4 space-y-3.5 flex flex-col text-left">
+          <div className="w-80 rounded-2xl bg-slate-900 border border-slate-800 border border-white/20 shadow-2xl p-4 space-y-3.5 flex flex-col text-left">
             <div className="flex items-center justify-between border-b border-white/10 pb-2">
               <span className="font-bold text-xs tracking-wider uppercase text-slate-200 flex items-center space-x-1">
                 <Sparkles className="w-3.5 h-3.5 text-indigo-400" />

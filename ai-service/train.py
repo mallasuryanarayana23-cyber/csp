@@ -1,51 +1,87 @@
 import os
 import numpy as np
-import xgboost as xgb
+import torch
+import torch.nn as nn
 from sklearn.tree import DecisionTreeClassifier
 import joblib
-import pandas as pd
 
 MODEL_DIR = "models"
 os.makedirs(MODEL_DIR, exist_ok=True)
 
-def train_fusion_model():
-    print("Generating synthetic multi-modal data for Fusion model...")
+# ---------------------------------------------------------
+# Phase 4: True LSTM Temporal Sequence Modeling (PyTorch)
+# ---------------------------------------------------------
+class CognitiveLSTM(nn.Module):
+    def __init__(self, input_size=6, hidden_size=16, num_layers=2, output_size=1):
+        super(CognitiveLSTM, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x):
+        # x shape: (batch_size, sequence_length, input_size)
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
+        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
+        
+        out, _ = self.lstm(x, (h0, c0))
+        # Take the output from the last time step
+        out = self.fc(out[:, -1, :])
+        return out
+
+def train_lstm_fusion_model():
+    print("Generating synthetic TEMPORAL sequence data for PyTorch LSTM...")
     # Features: [gaze_dispersion, blink_interval, avg_dwell, avg_flight, rms_amplitude, hesitation_events]
-    # Label: Cognitive Engagement Score (0-100)
+    seq_length = 10
+    samples_per_class = 300
     
-    # High Engagement
-    X_high = np.random.normal(loc=[15, 12, 100, 150, 0.08, 1], scale=[5, 2, 20, 30, 0.02, 1], size=(500, 6))
-    y_high = np.random.normal(loc=90, scale=5, size=500)
+    def generate_sequence(loc, scale):
+        # (samples, seq_length, features)
+        return np.random.normal(loc=loc, scale=scale, size=(samples_per_class, seq_length, 6))
     
-    # Moderate Engagement
-    X_med = np.random.normal(loc=[35, 8, 150, 250, 0.05, 5], scale=[10, 3, 30, 40, 0.01, 2], size=(500, 6))
-    y_med = np.random.normal(loc=65, scale=10, size=500)
+    # High Engagement sequences
+    X_high = generate_sequence([15, 12, 100, 150, 0.08, 1], [5, 2, 20, 30, 0.02, 1])
+    y_high = np.random.normal(loc=90, scale=5, size=samples_per_class)
     
-    # Low Engagement (High stress/distraction)
-    X_low = np.random.normal(loc=[60, 5, 200, 400, 0.02, 15], scale=[15, 2, 40, 60, 0.01, 5], size=(500, 6))
-    y_low = np.random.normal(loc=35, scale=15, size=500)
+    # Moderate Engagement sequences
+    X_med = generate_sequence([35, 8, 150, 250, 0.05, 5], [10, 3, 30, 40, 0.01, 2])
+    y_med = np.random.normal(loc=65, scale=10, size=samples_per_class)
+    
+    # Low Engagement sequences (High stress)
+    X_low = generate_sequence([60, 5, 200, 400, 0.02, 15], [15, 2, 40, 60, 0.01, 5])
+    y_low = np.random.normal(loc=35, scale=15, size=samples_per_class)
     
     X = np.vstack([X_high, X_med, X_low])
     X = np.maximum(X, 0)
     y = np.concatenate([y_high, y_med, y_low])
     y = np.clip(y, 0, 100)
     
-    print("Training Multi-Modal Fusion XGBoost Regressor...")
-    model = xgb.XGBRegressor(n_estimators=100, max_depth=5, learning_rate=0.1, random_state=42)
-    model.fit(X, y)
+    # Convert to PyTorch tensors
+    X_tensor = torch.tensor(X, dtype=torch.float32)
+    y_tensor = torch.tensor(y, dtype=torch.float32).view(-1, 1)
     
-    joblib.dump(model, os.path.join(MODEL_DIR, "fusion_model.joblib"))
-    print("Fusion model saved.")
+    model = CognitiveLSTM()
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    
+    print("Training Multi-Modal Fusion LSTM (PyTorch)...")
+    epochs = 30
+    for epoch in range(epochs):
+        model.train()
+        optimizer.zero_grad()
+        outputs = model(X_tensor)
+        loss = criterion(outputs, y_tensor)
+        loss.backward()
+        optimizer.step()
+        
+    torch.save(model.state_dict(), os.path.join(MODEL_DIR, "fusion_lstm.pth"))
+    print("PyTorch LSTM model saved.")
 
+# ---------------------------------------------------------
+# Phase 7 & 9: ML Clustering Recommendation Model
+# ---------------------------------------------------------
 def train_recommendation_model():
-    print("Generating synthetic cognitive clusters for Recommendation model...")
-    # Features: [focus_score, fluency_score, distraction_events]
-    # Label classes (Intervention Categories):
-    # 0 -> "Visual-Spatial Interventions" (Low Focus, High Distractions)
-    # 1 -> "Phonetic Drills" (Low Fluency, Stable Focus)
-    # 2 -> "Advanced Challenge" (High Focus, High Fluency)
-    # 3 -> "Cognitive Rest Period" (Extremely low scores across the board)
-    
+    print("Generating cognitive clusters for Recommendation model...")
     X_vis = np.random.normal(loc=[40, 85, 15], scale=[10, 5, 3], size=(500, 3))
     y_vis = np.zeros(500)
     
@@ -70,7 +106,7 @@ def train_recommendation_model():
     print("Recommendation model saved.")
 
 if __name__ == "__main__":
-    print("Initializing NeuroLearn Deep AI Model Training Pipeline...")
-    train_fusion_model()
+    print("Initializing NeuroLearn Deep AI Model Training Pipeline (LSTM)...")
+    train_lstm_fusion_model()
     train_recommendation_model()
     print("All models trained and saved to 'models/' directory.")
