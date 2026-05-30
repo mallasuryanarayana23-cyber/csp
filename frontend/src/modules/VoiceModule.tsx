@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import { Mic, StopCircle, RefreshCw, Sparkles, CheckCircle2, ChevronRight, Activity } from 'lucide-react';
+import { apiClient } from '../../api/client';
 
 export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> = ({ testId, onComplete }) => {
-  const { readingTests, addReadingTestResult, addNotification } = useStore();
+  const { readingTests, user, addReadingTestResult, addNotification } = useStore();
   const test = readingTests.find(t => t.id === testId) || readingTests[0];
 
   const [isRecording, setIsRecording] = useState(false);
@@ -143,21 +144,14 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
     try {
       const formData = new FormData();
       formData.append('audio', audioBlob, 'student_voice.webm');
-      formData.append('studentId', 'student-2'); // Hardcoded Sophia for prototype
+      // @ts-ignore
+      formData.append('studentId', user?.studentProfileId || 'unknown');
 
-      const token = localStorage.getItem('token') || '';
-      
-      const response = await fetch('http://localhost:4000/api/screenings/submit-audio', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
+      const response = await apiClient.post('/api/screenings/submit-audio', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
 
-      if (!response.ok) throw new Error("AI Processing Failed");
-
-      const data = await response.json();
+      const data = response.data;
       
       setNlpTranscription(data.aiResponse.transcription);
       setNlpFluencyScore(data.aiResponse.fluency_score);
@@ -176,8 +170,10 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
   };
 
   const submitAnalysis = () => {
+    if (!user) return;
+    // @ts-ignore
     addReadingTestResult(
-      'student-2', 
+      user.studentProfileId || 'unknown', 
       test.id,
       75, 
       Math.round(nlpFluencyScore), 

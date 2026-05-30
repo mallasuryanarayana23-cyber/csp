@@ -59,6 +59,7 @@ model StudentProfile {
   focusScore     Int           @default(100) // 0-100
   streakDays     Int           @default(0)
   lastTested     DateTime?
+  parentId       String?       // To link to PARENT role User
   
   // Relations
   userId         String        @unique

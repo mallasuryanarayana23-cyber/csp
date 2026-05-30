@@ -5,10 +5,15 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import jsPDF from 'jspdf';
 
 export const TeacherPortal: React.FC = () => {
-  const { students, aiReports } = useStore();
+  const { students, aiReports, fetchStudents, user } = useStore();
 
-  const atRiskStudents = students.filter(s => s.status === 'at-risk');
-  const improvingStudents = students.filter(s => s.status === 'improving');
+  React.useEffect(() => {
+    fetchStudents();
+  }, [fetchStudents]);
+
+  // Fallback for status until backend provides it directly
+  const atRiskStudents = students.filter(s => s.focusScore < 60);
+  const improvingStudents = students.filter(s => s.focusScore >= 60 && s.focusScore < 80);
 
   // Dummy longitudinal data for the chart
   const cohortData = [
@@ -138,7 +143,7 @@ export const TeacherPortal: React.FC = () => {
                   <h4 className="text-xs font-bold text-slate-200">{student.name}</h4>
                   <div className="flex items-center space-x-2 mt-1">
                     <span className="text-[9px] text-slate-500 uppercase">Focus: {student.focusScore}%</span>
-                    <span className={`w-1.5 h-1.5 rounded-full ${student.status === 'at-risk' ? 'bg-red-500' : student.status === 'improving' ? 'bg-emerald-500' : 'bg-indigo-500'}`} />
+                    <span className={`w-1.5 h-1.5 rounded-full ${student.focusScore < 60 ? 'bg-red-500' : student.focusScore >= 60 && student.focusScore < 80 ? 'bg-emerald-500' : 'bg-indigo-500'}`} />
                   </div>
                 </div>
                 <button 

@@ -36,9 +36,9 @@ jobs:
       working-directory: ./backend
       run: npm ci || npm install
 
-    - name: Verify Backend Build
+    - name: Build Backend (TypeScript validation)
       working-directory: ./backend
-      run: npm run build || echo "TypeScript compilation bypassed for CI"
+      run: npm run build
 
     - name: Install AI Service Dependencies
       working-directory: ./ai-service

@@ -11,12 +11,16 @@ import { StudentDashboard as StudentDash } from './dashboard/StudentDashboard';
 import { TeacherPortal as TeacherPort } from './dashboard/TeacherPortal';
 import { ParentPortal as ParentPort } from './dashboard/ParentPortal';
 import { AdminPanel as AdminPan } from './dashboard/AdminPanel';
+import { LoginPage } from './components/Auth/LoginPage';
+import { RegisterPage } from './components/Auth/RegisterPage';
 import { useStore } from './store/useStore';
+import { apiClient } from './api/client';
 import { HelpCircle, Sparkles } from 'lucide-react';
 
 export const App: React.FC = () => {
   const { user, activeRole, accessibility, addNotification } = useStore();
   const [showLanding, setShowLanding] = useState(true);
+  const [isRegistering, setIsRegistering] = useState(false);
 
   // Gaze Reading Ruler Tracking
   const [rulerY, setRulerY] = useState(300);
@@ -41,7 +45,7 @@ export const App: React.FC = () => {
     { sender: 'bot', text: 'Hello! I am NeuroBot. Ask me anything about dyslexia, attention tracking, or accommodations!' }
   ]);
 
-  const handleSendChat = (e: React.FormEvent) => {
+  const handleSendChat = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
 
@@ -49,21 +53,21 @@ export const App: React.FC = () => {
     setChatHistory(prev => [...prev, { sender: 'user', text: userText }]);
     setChatInput('');
 
-    // Generate responsive client-side AI answers
-    setTimeout(() => {
-      let botResponse = "I can assist you with your learning difficulty screening or custom study plans. Try running the voice or typing assessments to map your sensory profiles.";
-      const query = userText.toLowerCase();
-      if (query.includes('dyslexia')) {
-        botResponse = "Dyslexia is mapped through letter substitutions (like b/d swap) and physical keystroke rhythm inconsistencies. Our platform generates custom formatted OpenDyslexic spaced text guides as accommodations.";
-      } else if (query.includes('adhd') || query.includes('attention') || query.includes('focus')) {
-        botResponse = "ADHD attention slip vectors are identified via webcam eye gaze tracking deviations. We recommend 2-minute visual calibration focus breaks and enabled horizontal reading guides.";
-      } else if (query.includes('voice') || query.includes('speech')) {
-        botResponse = "The voice module analyzes speech hesitation patterns, reading speed, and phonological fluency using consumer microphones.";
-      }
-
-      setChatHistory(prev => [...prev, { sender: 'bot', text: botResponse }]);
-    }, 600);
+    try {
+      const res = await apiClient.post('/api/chat', { message: userText });
+      setChatHistory(prev => [...prev, { sender: 'bot', text: res.data.reply }]);
+    } catch (err) {
+      setChatHistory(prev => [...prev, { sender: 'bot', text: 'Sorry, I am unable to connect to the NeuroLearn backend right now.' }]);
+    }
   };
+
+  // Auth gate
+  if (!user) {
+    if (isRegistering) {
+      return <RegisterPage onToggleLogin={() => setIsRegistering(false)} />;
+    }
+    return <LoginPage onToggleRegister={() => setIsRegistering(true)} />;
+  }
 
   return (
     <div className={`min-h-screen text-slate-100 font-sans relative ${
@@ -103,10 +107,10 @@ export const App: React.FC = () => {
         <LandingPage onEnterDashboard={() => setShowLanding(false)} />
       ) : (
         <main className="py-6 min-h-[calc(100vh-140px)]">
-          {activeRole === 'student' && <StudentDash />}
-          {activeRole === 'teacher' && <TeacherPort />}
-          {activeRole === 'parent' && <ParentPort />}
-          {activeRole === 'admin' && <AdminPan />}
+          {activeRole === 'STUDENT' && <StudentDash />}
+          {activeRole === 'TEACHER' && <TeacherPort />}
+          {activeRole === 'PARENT' && <ParentPort />}
+          {activeRole === 'ADMIN' && <AdminPan />}
         </main>
       )}
 

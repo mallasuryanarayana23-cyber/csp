@@ -11,18 +11,33 @@ import {
   ServerCrash
 } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
+import { apiClient } from '../api/client';
 
 export const AdminPanel: React.FC = () => {
-  const { students, aiReports } = useStore();
-  
-  // Simulated admin system logs
-  const [logs, setLogs] = useState<Array<{ time: string; event: string; status: 'OK' | 'WARN' }>>([
-    { time: '17:48:02', event: 'Web Audio API context activated client-side', status: 'OK' },
-    { time: '17:45:15', event: 'Webcam Eye gaze mapping calibration success: student-2', status: 'OK' },
-    { time: '17:42:30', event: 'Keystroke dynamics flight index calculation', status: 'OK' },
-    { time: '17:38:12', event: 'Prisma model sync completed with local memory cache', status: 'OK' },
-    { time: '17:30:05', event: 'Client device accessibility magnification scale adjusted to 115%', status: 'WARN' }
-  ]);
+  const { students } = useStore();
+  const [logs, setLogs] = useState<Array<{ time: string; event: string; status: 'OK' | 'WARN' }>>([]);
+  const [users, setUsers] = useState([]);
+
+  React.useEffect(() => {
+    const fetchAdminData = async () => {
+      try {
+        const [logsRes, usersRes] = await Promise.all([
+          apiClient.get('/api/admin/audit-logs'),
+          apiClient.get('/api/admin/users')
+        ]);
+        const formattedLogs = logsRes.data.map((l: any) => ({
+          time: new Date(l.createdAt).toLocaleTimeString(),
+          event: l.event,
+          status: 'OK'
+        }));
+        setLogs(formattedLogs);
+        setUsers(usersRes.data);
+      } catch (e) {
+        console.error('Failed to load admin data');
+      }
+    };
+    fetchAdminData();
+  }, []);
 
   // System performance metrics
   const perfData = [
@@ -64,7 +79,7 @@ export const AdminPanel: React.FC = () => {
             </div>
             <div>
               <span className="text-[10px] text-slate-500 block uppercase font-bold tracking-wider">Database Records</span>
-              <span className="text-lg font-black text-indigo-400 font-rajdhani block leading-none mt-0.5">{students.length} Accounts</span>
+              <span className="text-lg font-black text-indigo-400 font-rajdhani block leading-none mt-0.5">{users.length} Accounts</span>
             </div>
           </div>
         </div>
