@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'neurolearn_backend'
+    static_configs:
+      - targets: ['backend:4000']
+
+  - job_name: 'neurolearn_ai_service'
+    static_configs:
+      - targets: ['ai-service:8000']

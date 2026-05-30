@@ -4,20 +4,82 @@ import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import jwt from 'jsonwebtoken';
 import cors from 'cors';
+import { Queue } from 'bullmq';
+import { z } from 'zod';
+import { PrismaClient } from '@prisma/client';
+import { setupWorker } from './worker';
+import * as Sentry from '@sentry/node';
+import { nodeProfilingIntegration } from '@sentry/profiling-node';
+import client from 'prom-client';
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN || '',
+  integrations: [
+    nodeProfilingIntegration(),
+  ],
+  tracesSampleRate: 1.0,
+  profilesSampleRate: 1.0,
+});
+
+// Prometheus Default Metrics
+const register = new client.Registry();
+client.collectDefaultMetrics({ register });
+
+// Custom Prometheus Metric
+const httpRequestsTotal = new client.Counter({
+  name: 'http_requests_total',
+  help: 'Total number of HTTP requests',
+  labelNames: ['method', 'route', 'status_code'],
+});
+register.registerMetric(httpRequestsTotal);
 
 const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
+const prisma = new PrismaClient();
 
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'neurolearn-super-secret-key-gateways';
 
+// Setup BullMQ Queue
+const redisConnection = {
+  host: process.env.REDIS_HOST || '127.0.0.1',
+  port: parseInt(process.env.REDIS_PORT || '6379'),
+};
+const aiQueue = new Queue('ai-inference-queue', { connection: redisConnection });
+
+// Initialize the worker if not in a separate process
+setupWorker();
+
 app.use(cors());
 app.use(express.json());
 
+// Sentry Request Handler
+Sentry.setupExpressErrorHandler(app);
+
+// Prometheus Middleware
+app.use((req, res, next) => {
+  res.on('finish', () => {
+    httpRequestsTotal.inc({ method: req.method, route: req.path, status_code: res.statusCode });
+  });
+  next();
+});
+
+// Zod schemas for validation
+const ScreeningSubmitSchema = z.object({
+  studentId: z.string().uuid(),
+  testId: z.string().uuid(),
+  wpm: z.number(),
+  accuracy: z.number(),
+  hesitationMs: z.number(),
+  distractionCount: z.number(),
+  speechScore: z.number(),
+  aiPayload: z.any().optional(), // Raw data to send to AI models
+  aiType: z.enum(['DYSLEXIA', 'ADHD', 'SPEECH']).optional()
+});
+
 // 1. Basic security rate limiting simulated middleware
 const rateLimiter = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  // Production-grade middleware outlines rate limit counters
   next();
 };
 app.use(rateLimiter);
@@ -39,49 +101,73 @@ const authenticateToken = (req: any, res: express.Response, next: express.NextFu
 };
 
 // 3. REST API Routes
+app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.end(await register.metrics());
+});
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'NeuroLearn core cluster is operational', date: new Date() });
 });
 
 // Student assessment submission endpoint
-app.post('/api/screenings/submit', authenticateToken, (req: any, res) => {
-  const { studentId, testId, wpm, accuracy, hesitationMs, distractionCount, speechScore } = req.body;
-  
-  // Real database submit operations run here via Prisma
-  res.status(201).json({
-    message: 'Screening parameters successfully stored',
-    data: {
-      studentId,
-      testId,
-      computedMetrics: {
-        wpm,
-        accuracy,
-        hesitationMs,
-        distractionCount,
-        cognitiveStress: hesitationMs > 400 ? 'Severe' : 'Low'
-      }
-    }
-  });
+app.post('/api/screenings/submit', authenticateToken, async (req: any, res) => {
+  try {
+    const data = ScreeningSubmitSchema.parse(req.body);
 
-  // Push WebSocket notification telemetry to listening teachers in real-time!
-  broadcastToTeachers({
-    event: 'NEW_SCREENING_SUBMISSION',
-    data: { studentName: req.user.name, wpm, focusScore: accuracy }
-  });
+    // Save initial basic result in DB
+    const result = await prisma.testResult.create({
+      data: {
+        studentId: data.studentId,
+        testId: data.testId,
+        wpm: data.wpm,
+        accuracy: data.accuracy,
+        hesitationMs: data.hesitationMs,
+        distractionCount: data.distractionCount,
+        speechScore: data.speechScore,
+      }
+    });
+
+    // If AI processing requested, push to queue
+    if (data.aiPayload && data.aiType) {
+      await aiQueue.add('generate-ai-report', {
+        studentId: data.studentId,
+        payload: data.aiPayload,
+        type: data.aiType
+      });
+    }
+
+    res.status(201).json({
+      message: 'Screening parameters successfully stored and AI processing queued',
+      data: result
+    });
+
+    // Push WebSocket notification telemetry to listening teachers in real-time!
+    broadcastToTeachers({
+      event: 'NEW_SCREENING_SUBMISSION',
+      data: { studentId: data.studentId, wpm: data.wpm, focusScore: data.accuracy }
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid payload format', details: error.errors });
+    }
+    console.error(error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // Get AI Reports by student role
-app.get('/api/reports/:studentId', authenticateToken, (req, res) => {
-  res.json({
-    studentId: req.params.studentId,
-    date: new Date(),
-    dyslexiaProb: 82,
-    adhdProb: 65,
-    recommendations: [
-      'Enable OpenDyslexic spaced guidance views.',
-      'Assign daily line tracking reading guides.'
-    ]
-  });
+app.get('/api/reports/:studentId', authenticateToken, async (req, res) => {
+  try {
+    const reports = await prisma.aIReport.findMany({
+      where: { studentId: req.params.studentId },
+      orderBy: { date: 'desc' },
+      take: 5
+    });
+    res.json(reports);
+  } catch (error) {
+    res.status(500).json({ error: 'Could not fetch reports' });
+  }
 });
 
 // 4. WebSocket Server handling real-time cognitive stress tracking
@@ -94,10 +180,7 @@ wss.on('connection', (ws: WebSocket, req) => {
   ws.on('message', (message: string) => {
     try {
       const parsed = JSON.parse(message);
-      
-      // Handle active stream telemetry
       if (parsed.event === 'ACTIVE_TELEMETRY_STREAM') {
-        // e.g., real-time blink trackers, micro pauses streams
         ws.send(JSON.stringify({ event: 'TELEMETRY_ACKNOWLEDGED', status: 'STABLE' }));
       }
     } catch (e) {
