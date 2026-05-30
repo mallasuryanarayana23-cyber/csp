@@ -1,0 +1,156 @@
+// Prisma database schema definition for NeuroLearn Platform
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  STUDENT
+  TEACHER
+  PARENT
+  ADMIN
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum CognitiveStress {
+  LOW
+  MODERATE
+  SEVERE
+}
+
+model User {
+  id            String          @id @default(uuid())
+  email         String          @unique
+  name          String
+  passwordHash  String
+  role          Role
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  
+  // Relations
+  studentProfile StudentProfile?
+  auditLogs      AuditLog[]
+  notifications  Notification[]
+}
+
+model School {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  address   String?
+  createdAt DateTime @default(now())
+  
+  // Relations
+  students  StudentProfile[]
+}
+
+model StudentProfile {
+  id             String        @id @default(uuid())
+  grade          String
+  focusScore     Int           @default(100) // 0-100
+  streakDays     Int           @default(0)
+  lastTested     DateTime?
+  
+  // Relations
+  userId         String        @unique
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schoolId       String
+  school         School        @relation(fields: [schoolId], references: [id])
+  
+  results        TestResult[]
+  aiReports      AIReport[]
+  badges         Badge[]
+}
+
+model ReadingTest {
+  id            String       @id @default(uuid())
+  title         String
+  category      String       // 'Dyslexia Screening', 'ADHD Assessment'
+  text          String       @db.Text
+  difficulty    String       // 'Easy', 'Medium', 'Hard'
+  estimatedTime Int          // seconds
+  createdAt     DateTime     @default(now())
+  
+  // Relations
+  results       TestResult[]
+}
+
+model TestResult {
+  id               String       @id @default(uuid())
+  date             DateTime     @default(now())
+  wpm              Int
+  accuracy         Int
+  hesitationMs     Int
+  distractionCount Int
+  speechScore      Int
+  
+  // Relations
+  studentId        String
+  student          StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  testId           String
+  test             ReadingTest    @relation(fields: [testId], references: [id])
+}
+
+model AIReport {
+  id                       String          @id @default(uuid())
+  date                     DateTime         @default(now())
+  dyslexiaRisk             RiskLevel       @default(LOW)
+  dyslexiaProb             Int             // 0-100
+  adhdRisk                 RiskLevel       @default(LOW)
+  adhdProb                 Int             // 0-100
+  cognitiveStress          CognitiveStress @default(LOW)
+  speechFluencyScore       Int
+  typingRhythmConsistency  Int
+  attentionSpanMin         Float
+  recommendations          String[]        // Array of intervention strings
+  teacherNotes             String?         @db.Text
+  
+  // Relations
+  studentId                String
+  student                  StudentProfile  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+}
+
+model Badge {
+  id          String         @id @default(uuid())
+  name        String
+  icon        String
+  date        DateTime       @default(now())
+  
+  // Relations
+  studentId   String
+  student     StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  title     String
+  message   String
+  type      String   // 'info', 'warning', 'success'
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  // Relations
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  event     String
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  
+  // Relations
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

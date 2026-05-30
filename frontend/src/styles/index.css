@@ -1,0 +1,136 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-cyber-bg text-slate-100 font-sans transition-colors duration-300;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #030712;
+}
+::-webkit-scrollbar-thumb {
+  background: #1f2937;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #374151;
+}
+
+/* Premium Futuristic Utilities */
+.glass-panel {
+  background: rgba(17, 25, 40, 0.7);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-panel-glow {
+  background: rgba(17, 25, 40, 0.75);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  box-shadow: 0 8px 32px 0 rgba(99, 102, 241, 0.15);
+}
+
+.text-glow-primary {
+  text-shadow: 0 0 10px rgba(99, 102, 241, 0.6);
+}
+
+.text-glow-accent {
+  text-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+}
+
+.glow-btn {
+  position: relative;
+  transition: all 0.3s ease;
+}
+.glow-btn::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background: linear-gradient(45deg, #6366f1, #a855f7, #10b981);
+  border-radius: inherit;
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  filter: blur(4px);
+}
+.glow-btn:hover::after {
+  opacity: 1;
+}
+
+/* Dyslexia font scalability helper class */
+.dyslexia-font-enabled * {
+  font-family: 'OpenDyslexic', sans-serif !important;
+  line-height: 1.6 !important;
+  word-spacing: 0.12em !important;
+  letter-spacing: 0.05em !important;
+}
+
+/* High Contrast mode helper classes */
+.high-contrast-enabled {
+  --tw-bg-opacity: 1 !important;
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+.high-contrast-enabled .glass-panel,
+.high-contrast-enabled .glass-panel-glow {
+  background: #111111 !important;
+  border: 2px solid #ffffff !important;
+  box-shadow: none !important;
+  color: #ffffff !important;
+}
+.high-contrast-enabled button {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 2px solid #ffffff !important;
+  font-weight: 800 !important;
+}
+.high-contrast-enabled button:hover {
+  background: #000000 !important;
+  color: #ffffff !important;
+}
+.high-contrast-enabled a,
+.high-contrast-enabled p,
+.high-contrast-enabled h1,
+.high-contrast-enabled h2,
+.high-contrast-enabled h3,
+.high-contrast-enabled span,
+.high-contrast-enabled label {
+  color: #ffffff !important;
+  text-shadow: none !important;
+}
+
+/* Floating particle canvas styling */
+.canvas-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Text guide ruler overlay */
+.reading-ruler {
+  position: fixed;
+  left: 0;
+  width: 100%;
+  height: 40px;
+  background: rgba(16, 185, 129, 0.15);
+  border-top: 2px solid #10b981;
+  border-bottom: 2px solid #10b981;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translateY(-50%);
+  backdrop-filter: invert(0.05);
+}
