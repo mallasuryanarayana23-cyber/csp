@@ -129,13 +129,16 @@ export const TypingModule: React.FC<{ testId: string; onComplete: () => void }> 
     const errorCount = backspaceCount.current + substitutions.current * 2;
     const accuracy = Math.max(35, Math.min(100, Math.round(100 - (errorCount / test.text.length) * 100)));
 
+    // Calculate real focus deviations (lapses in typing focus > 1600ms)
+    const realDistractions = hesitationTimes.current.filter(t => t > 1600).length;
+
     addReadingTestResult(
       'student-2', // Sophia Alvarez
       test.id,
       wpm,
       accuracy,
       Math.round(averageHesitation),
-      backspaceCount.current > 6 ? 5 : 2, // simulated distraction events
+      realDistractions,
       85 // standard speech fluency fallback
     );
 

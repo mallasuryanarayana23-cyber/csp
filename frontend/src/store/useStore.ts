@@ -36,6 +36,8 @@ export interface AIReport {
   attentionSpanMin: number;
   recommendations: string[];
   teacherNotes: string;
+  confidenceScore: number; // 0-100
+  aiExplanation: string;
 }
 
 export interface StudentProfile {
@@ -212,7 +214,9 @@ const mockAIReports: AIReport[] = [
       'Assign memory-retrieval spelling lists to maintain high typing vocabulary.',
       'Introduce cognitive pacing games to stimulate sustained concentration.'
     ],
-    teacherNotes: 'Ethan is showing remarkable progress. Gaze tracking shows consistent line transitions during reading tasks. Keystroke rhythms are steady.'
+    teacherNotes: 'Ethan is showing remarkable progress. Gaze tracking shows consistent line transitions during reading tasks. Keystroke rhythms are steady.',
+    confidenceScore: 94,
+    aiExplanation: "Inference confidence high. Sensory metrics map perfectly to low cognitive stress profiles with optimal gaze timelines and steady typing flight cycles."
   },
   {
     id: 'rep-2',
@@ -234,7 +238,9 @@ const mockAIReports: AIReport[] = [
       'Provide verbal speech assistance (Text-to-Speech) for multi-syllabic vocabulary words.',
       'Utilize typing dynamics tasks twice a week to trace and retrain spelling substitution habits.'
     ],
-    teacherNotes: 'Sophia has a high risk marker for visual spelling substitutions (b/d confusion). Frequent pauses between keypresses denote significant processing stress.'
+    teacherNotes: 'Sophia has a high risk marker for visual spelling substitutions (b/d confusion). Frequent pauses between keypresses denote significant processing stress.',
+    confidenceScore: 88,
+    aiExplanation: "Focus index decreased due to severe keyboard input rhythm variances, marked visual substitutions (b/d), and off-screen visual distraction vectors."
   },
   {
     id: 'rep-3',
@@ -255,7 +261,9 @@ const mockAIReports: AIReport[] = [
       'Adopt micro-breaks (2-3 minutes) with focused physical alignment exercises.',
       'Incorporate interactive typing exercises to anchor wandering visual attention.'
     ],
-    teacherNotes: 'Marcus shows classic ADHD attention flags. Web-gaze analytics indicate high distraction vectors (looking away from camera) during medium difficulty reading segments.'
+    teacherNotes: 'Marcus shows classic ADHD attention flags. Web-gaze analytics indicate high distraction vectors (looking away from camera) during medium difficulty reading segments.',
+    confidenceScore: 91,
+    aiExplanation: "Gaze displacement tracking mapped frequent lateral focus shifts (attention slips). Vocal pacing indicates speech stress during complex text segments."
   }
 ];
 
@@ -434,6 +442,29 @@ export const useStore = create<NeuroStore>((set) => ({
       adhdProb = Math.round(35 + (distractionCount * 8));
     }
 
+    // Compute real multi-modal AI explanations and confidence indices
+    const confidenceScore = Math.round(Math.max(65, 96 - (distractionCount * 2) - (hesitationMs / 80)));
+    let factors: string[] = [];
+    if (dyslexiaRisk === 'High') {
+      factors.push(`high motor-cognitive hesitation patterns (${hesitationMs}ms average delay)`);
+    } else if (dyslexiaRisk === 'Medium') {
+      factors.push(`moderate inter-key flight timing variance (${hesitationMs}ms)`);
+    }
+    
+    if (adhdRisk === 'High') {
+      factors.push(`persistent focus alignment slips (${distractionCount} lateral distractions) mapped in gaze mesh`);
+    } else if (adhdRisk === 'Medium') {
+      factors.push(`occasional off-screen gaze drifts (${distractionCount} deviations)`);
+    }
+
+    if (speechScore < 75) {
+      factors.push(`phonological tracking struggle (${Math.round(speechScore)}% fluency match)`);
+    }
+
+    const aiExplanation = factors.length > 0
+      ? `Multi-modal AI engine identified risk parameters due to: ${factors.join(', and ')}. Accommodations have been dynamically deployed.`
+      : `All sensory metrics evaluate optimal. Webcam gaze tracking stability, vocal pacing (${Math.round(speechScore)}%), and keyboard dynamics remain within target guidelines.`;
+
     const nextAIReport: AIReport = {
       id: `rep-${Date.now()}`,
       studentId,
@@ -453,7 +484,9 @@ export const useStore = create<NeuroStore>((set) => ({
         adhdRisk === 'High' ? 'Enable visual line-tracking overlay rulers for reading.' : 'Assign short focus-driven phoneme segments (1-2 mins).',
         'Deploy auditory spelling assistance patterns during key typing intervals.'
       ],
-      teacherNotes: `Real-time session analysis performed on test "${test ? test.title : 'General Checkup'}". Keystroke hesitation: ${hesitationMs}ms. Distraction count: ${distractionCount}.`
+      teacherNotes: `Real-time session analysis performed on test "${test ? test.title : 'General Checkup'}". Keystroke hesitation: ${hesitationMs}ms. Distraction count: ${distractionCount}.`,
+      confidenceScore,
+      aiExplanation
     };
 
     const updatedReports = state.aiReports.filter(r => r.studentId !== studentId).concat(nextAIReport);

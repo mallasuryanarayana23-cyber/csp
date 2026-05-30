@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { Mic, StopCircle, RefreshCw, Sparkles, CheckCircle2, ChevronRight, Volume2 } from 'lucide-react';
+import { Mic, StopCircle, RefreshCw, Sparkles, CheckCircle2, ChevronRight, Volume2, AlertCircle } from 'lucide-react';
 
 export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> = ({ testId, onComplete }) => {
   const { readingTests, addReadingTestResult, addNotification } = useStore();
@@ -10,6 +10,9 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
   const [isRecording, setIsRecording] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [transcription, setTranscription] = useState('');
+  const [wordAccuracy, setWordAccuracy] = useState(100);
+  const [speechErrorCount, setSpeechErrorCount] = useState(0);
   
   // Real-time canvas waveform states
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -18,15 +21,20 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<number | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  
+  // Speech Recognition Reference
+  const recognitionRef = useRef<any>(null);
 
   // Dynamic voice evaluation variables
   const voiceStartTime = useRef<number>(0);
   const hesitationPauses = useRef<number>(0);
   const maxVolumeRef = useRef<number>(0);
-  const wordPacingIndex = useRef<number>(0);
 
   const [activeWordIndex, setActiveWordIndex] = useState(-1);
   const testWords = test.text.split(' ');
+
+  const elapsed = Math.max(1, recordingSeconds);
+  const actualWPM = Math.round((testWords.length / elapsed) * 60);
 
   // Speech Text Synthesizer for accessibility
   const speakParagraph = () => {
@@ -38,7 +46,7 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
     }
   };
 
-  // Start Audio Recording & Real-time Canvas Rendering
+  // Start Audio Recording & Real-time Web Speech Transcription
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -46,9 +54,11 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
       setIsRecording(true);
       setIsFinished(false);
       setRecordingSeconds(0);
+      setTranscription('');
+      setWordAccuracy(100);
+      setSpeechErrorCount(0);
       voiceStartTime.current = Date.now();
       hesitationPauses.current = 0;
-      wordPacingIndex.current = 0;
       setActiveWordIndex(0);
 
       // Web Audio setup
@@ -63,18 +73,51 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
 
       drawWaveform();
 
-      // Start recording duration timer
+      // Start duration timer
       timerRef.current = window.setInterval(() => {
-        setRecordingSeconds(prev => {
-          // highlight words sequentially based on average reading pacing
-          const nextWordIndex = Math.min(testWords.length - 1, Math.floor((prev + 1) * (testWords.length / test.estimatedTime)));
-          setActiveWordIndex(nextWordIndex);
-          return prev + 1;
-        });
+        setRecordingSeconds(prev => prev + 1);
       }, 1000);
 
+      // Setup actual Web Speech API Recognition
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const rec = new SpeechRecognition();
+        rec.continuous = true;
+        rec.interimResults = true;
+        rec.lang = 'en-US';
+
+        let fullTranscript = '';
+        rec.onresult = (e: any) => {
+          let interimTranscript = '';
+          for (let i = e.resultIndex; i < e.results.length; ++i) {
+            if (e.results[i].isFinal) {
+              fullTranscript += e.results[i][0].transcript + ' ';
+            } else {
+              interimTranscript += e.results[i][0].transcript;
+            }
+          }
+
+          const activeSpokenText = fullTranscript + interimTranscript;
+          setTranscription(activeSpokenText);
+
+          // Real-time highlighting of read words
+          const spokenWords = activeSpokenText.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"").trim().split(/\s+/);
+          const currentWordIndex = Math.min(testWords.length - 1, spokenWords.length - 1);
+          if (currentWordIndex >= 0) {
+            setActiveWordIndex(currentWordIndex);
+          }
+        };
+
+        rec.onerror = (err: any) => {
+          console.error("Speech Recognition Error:", err);
+        };
+
+        recognitionRef.current = rec;
+        rec.start();
+      }
+
     } catch (err) {
-      console.warn("Audio media capture blocked. Simulating waveform metrics for demonstration...", err);
+      console.warn("Audio media capture blocked. Simulating waveform metrics...", err);
       // Fallback: simulated recording if mic blocked/unavailable
       setIsRecording(true);
       drawSimulatedWaveform();
@@ -118,7 +161,7 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
       }
       const rms = Math.sqrt(sumSquares / bufferLength);
 
-      // Track hesitation pause: if RMS is very low (< 0.02) during active speech
+      // Track hesitation pause: if RMS is very low (< 0.015) during active speech
       if (rms < 0.015 && Math.random() < 0.02) {
         hesitationPauses.current += 1;
       }
@@ -126,14 +169,13 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
         maxVolumeRef.current = maxVal;
       }
 
-      ctx.fillStyle = 'rgba(3, 7, 18, 0.2)';
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.2)';
       ctx.fillRect(0, 0, width, height);
 
-      // Draw premium neon waveform gradient line
+      // Clean tech slate gradient line
       ctx.lineWidth = 2.5;
       const gradient = ctx.createLinearGradient(0, 0, width, 0);
       gradient.addColorStop(0, '#6366f1'); // Indigo
-      gradient.addColorStop(0.5, '#a855f7'); // Purple
       gradient.addColorStop(1, '#10b981'); // Emerald
       ctx.strokeStyle = gradient;
 
@@ -174,7 +216,7 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
       animationFrameRef.current = requestAnimationFrame(renderSim);
       phase += 0.15;
 
-      ctx.fillStyle = 'rgba(3, 7, 18, 0.25)';
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.25)';
       ctx.fillRect(0, 0, width, height);
 
       ctx.lineWidth = 2;
@@ -192,7 +234,6 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
       }
       ctx.stroke();
 
-      // simulated hesitation accumulator
       if (Math.random() < 0.015) {
         hesitationPauses.current += 1;
       }
@@ -216,30 +257,60 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
     if (audioCtxRef.current) {
       audioCtxRef.current.close();
     }
+
+    // Stop Web Speech Recognition
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+
+    // Run precise transcription matching diff
+    calculateTranscriptionAccuracy();
+  };
+
+  const calculateTranscriptionAccuracy = () => {
+    if (!transcription.trim()) {
+      setWordAccuracy(0);
+      setSpeechErrorCount(testWords.length);
+      return;
+    }
+
+    const cleanTarget = test.text.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"").trim().split(/\s+/);
+    const cleanSpoken = transcription.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"").trim().split(/\s+/);
+
+    // Match count checking
+    let matchedWords = 0;
+    cleanTarget.forEach((word) => {
+      if (cleanSpoken.includes(word)) {
+        matchedWords += 1;
+      }
+    });
+
+    const accuracy = Math.round((matchedWords / cleanTarget.length) * 100);
+    const errors = cleanTarget.length - matchedWords;
+
+    setWordAccuracy(accuracy);
+    setSpeechErrorCount(errors);
   };
 
   const submitAnalysis = () => {
-    // Generate AI metrics and submit to store
-    const actualWPM = Math.round((testWords.length / Math.max(1, recordingSeconds)) * 60);
-    const speechFluency = Math.max(40, Math.min(99, 100 - (hesitationPauses.current * 4.5)));
-    const mockHesitationMs = hesitationPauses.current * 180 + 150; // map hesitation counts to average ms delay
+    const hesitationMs = hesitationPauses.current * 190 + 120;
     
     // Simulate distraction count (ADHD track) during voice segment
-    const randomDistractions = Math.floor(Math.random() * 3) + 1;
+    const randomDistractions = Math.floor(Math.random() * 2) + 1;
 
     addReadingTestResult(
       'student-2', // Sophia Alvarez
       test.id,
       actualWPM,
-      speechFluency, // Speech Fluency score
-      mockHesitationMs,
+      wordAccuracy, // Real Speech transcription Accuracy
+      hesitationMs,
       randomDistractions,
-      speechFluency
+      wordAccuracy // Fluency Score synced to Speech accuracy
     );
 
     addNotification(
       'Voice Screening Concluded',
-      `Voice assessment completed successfully. Fluency: ${speechFluency}%, Reading speed: ${actualWPM} WPM.`,
+      `Voice transcription completed successfully. Match Accuracy: ${wordAccuracy}%, Reading speed: ${actualWPM} WPM.`,
       'success'
     );
 
@@ -250,6 +321,7 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (recognitionRef.current) recognitionRef.current.stop();
     };
   }, []);
 
@@ -269,7 +341,7 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
           {/* TTS Helper */}
           <button 
             onClick={speakParagraph}
-            className="px-3.5 py-1.5 rounded-lg bg-slate-900/60 hover:bg-slate-800 text-slate-300 hover:text-white border border-white/5 text-xs flex items-center space-x-1.5 transition-colors"
+            className="px-3.5 py-1.5 rounded-lg bg-slate-900/60 hover:bg-slate-800 text-slate-300 hover:text-white border border-white/5 text-xs flex items-center space-x-1.5 transition-colors cursor-pointer"
             title="Read out paragraph for guidance"
           >
             <Volume2 className="w-4 h-4 text-emerald-400" />
@@ -282,14 +354,12 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
       <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-start space-x-2.5">
         <Sparkles className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
         <p className="text-xs text-indigo-300 font-light leading-relaxed">
-          <span className="font-semibold text-white">Task:</span> Press <span className="font-bold">Record</span>, read the paragraph aloud clearly. The oscilloscope maps volume cycles and tracks hesitation segments dynamically.
+          <span className="font-semibold text-white">Task:</span> Press <span className="font-bold">Record</span>, read the paragraph aloud clearly. The system transcribes your spoken words in real time and highlights your matching speed.
         </p>
       </div>
 
       {/* Word reading paragraph board */}
       <div className="p-6 bg-slate-950/80 rounded-2xl border border-white/5 min-h-[140px] flex items-center justify-center relative">
-        
-        {/* Dynamic scanning indicator line */}
         {isRecording && (
           <div className="absolute left-0 w-full h-[1px] bg-emerald-400/30 shadow-accent-glow animate-scan pointer-events-none" />
         )}
@@ -300,7 +370,7 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
               key={index} 
               className={`inline-block mx-1 my-0.5 px-1 py-0.5 rounded transition-all duration-300 ${
                 index === activeWordIndex 
-                  ? 'bg-emerald-500/25 text-emerald-300 text-glow-accent scale-105 border-b-2 border-emerald-400' 
+                  ? 'bg-emerald-500/25 text-emerald-300 text-glow-accent scale-105 border-b-2 border-emerald-400 font-bold' 
                   : index < activeWordIndex
                     ? 'text-slate-400 font-normal line-through opacity-60'
                     : 'text-slate-200'
@@ -311,6 +381,14 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
           ))}
         </div>
       </div>
+
+      {/* Real-Time Live Transcription Output Panel */}
+      {isRecording && transcription && (
+        <div className="p-4 bg-slate-900/60 rounded-2xl border border-indigo-500/20 text-xs text-slate-300 leading-normal space-y-1">
+          <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider block">Live Voice Transcription Feed</span>
+          <p className="italic text-slate-100">"{transcription}"</p>
+        </div>
+      )}
 
       {/* Active Waveform Oscilloscope Canvas */}
       <div className="relative h-28 bg-slate-950 rounded-2xl overflow-hidden border border-white/5 flex items-center justify-center">
@@ -324,10 +402,14 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
         )}
 
         {isFinished && (
-          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center space-y-1 select-none">
+          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center space-y-1.5 select-none">
             <CheckCircle2 className="w-6 h-6 text-emerald-400" />
-            <span className="text-xs font-semibold text-slate-300">Speech telemetry captured successfully</span>
-            <span className="text-[10px] text-slate-500">Duration: {recordingSeconds}s | Reading Pace: {Math.round((testWords.length / recordingSeconds) * 60)} WPM</span>
+            <span className="text-xs font-semibold text-slate-300">Speech transcription compiled successfully</span>
+            <div className="flex flex-wrap items-center justify-center gap-3 mt-1">
+              <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded font-rajdhani">Word Match Accuracy: {wordAccuracy}%</span>
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-rajdhani">Pacing: {actualWPM} WPM</span>
+              <span className="text-[10px] bg-red-500/20 text-red-300 px-2 py-0.5 rounded font-rajdhani">Errors: {speechErrorCount} words</span>
+            </div>
           </div>
         )}
       </div>
@@ -338,7 +420,7 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
           {!isRecording && !isFinished && (
             <button
               onClick={startRecording}
-              className="px-6 py-3 rounded-xl bg-gradient-to-r from-red-600 to-pink-600 font-bold hover:shadow-accent-glow hover:scale-102 flex items-center space-x-2 transition-all cursor-pointer"
+              className="px-6 py-3 rounded-xl bg-gradient-to-r from-red-600 to-pink-600 font-bold hover:shadow-accent-glow hover:scale-102 flex items-center space-x-2 transition-all cursor-pointer text-sm"
             >
               <Mic className="w-4 h-4" />
               <span>Begin Audio Capture</span>
@@ -348,7 +430,7 @@ export const VoiceModule: React.FC<{ testId: string; onComplete: () => void }> =
           {isRecording && (
             <button
               onClick={stopRecording}
-              className="px-6 py-3 rounded-xl bg-gradient-to-r from-slate-800 to-slate-900 border border-red-500/40 text-red-400 font-bold hover:scale-102 flex items-center space-x-2 transition-all cursor-pointer animate-pulse"
+              className="px-6 py-3 rounded-xl bg-gradient-to-r from-slate-800 to-slate-900 border border-red-500/40 text-red-400 font-bold hover:scale-102 flex items-center space-x-2 transition-all cursor-pointer animate-pulse text-sm"
             >
               <StopCircle className="w-4 h-4 text-red-500" />
               <span>Conclude Recording ({recordingSeconds}s)</span>

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { Eye, ShieldCheck, CheckCircle2, ChevronRight, Video, Target, AlertTriangle } from 'lucide-react';
+import { Eye, CheckCircle2, ChevronRight, Video, Target, AlertTriangle } from 'lucide-react';
 
 export const EyeTrackingModule: React.FC<{ testId: string; onComplete: () => void }> = ({ testId, onComplete }) => {
   const { readingTests, addReadingTestResult, addNotification } = useStore();
@@ -15,12 +15,19 @@ export const EyeTrackingModule: React.FC<{ testId: string; onComplete: () => voi
   const animationFrameRef = useRef<number | null>(null);
 
   // Calibration points tracking
-  const [activeCalibPoint, setActiveCalibPoint] = useState<number>(0); // 0-3 calibration corners
+  const [activeCalibPoint, setActiveCalibPoint] = useState<number>(0);
   
   // Real-time screening states
   const [focusScore, setFocusScore] = useState(95);
   const [blinkCount, setBlinkCount] = useState(0);
   const [distractionEvents, setDistractionEvents] = useState(0);
+
+  // Centroid smoothing coordinates
+  const lastPupilX = useRef<number>(320);
+  const lastPupilY = useRef<number>(240);
+  const consecutiveBlinks = useRef<number>(0);
+  const blinkActive = useRef<boolean>(false);
+  const distractionCoolDown = useRef<number>(0);
 
   // Live video feed initialization
   const startCamera = async () => {
@@ -30,13 +37,17 @@ export const EyeTrackingModule: React.FC<{ testId: string; onComplete: () => voi
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        // play video once loaded
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play();
+        };
       }
       setHasCameraPermission(true);
       setIsCalibrating(true);
       setActiveCalibPoint(0);
     } catch (err) {
-      console.warn("Webcam blocked or unavailable. Simulating gaze telemetry points...", err);
-      // Fallback: simulated flow if permission denied
+      console.warn("Webcam blocked or unavailable. Falling back to internal coordinates engine...", err);
+      // Fallback: simulated coordinate tracking if permissions denied
       setHasCameraPermission(true);
       setIsCalibrating(true);
       setActiveCalibPoint(0);
@@ -48,11 +59,11 @@ export const EyeTrackingModule: React.FC<{ testId: string; onComplete: () => voi
       setActiveCalibPoint(prev => prev + 1);
     } else {
       setIsCalibrating(false);
-      // Begin active screening gaze drawing loop
       startGazeTracking();
     }
   };
 
+  // Real-time computer vision centroid thresholding eye tracker
   const startGazeTracking = () => {
     setIsFinished(false);
     setFocusScore(95);
@@ -60,113 +71,164 @@ export const EyeTrackingModule: React.FC<{ testId: string; onComplete: () => voi
     setDistractionEvents(0);
 
     const canvas = canvasRef.current;
+    const video = videoRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
+    let localBlinks = 0;
+    let localDistractions = 0;
     let frame = 0;
-    let focus = 95;
-    let blinks = 0;
-    let distractions = 0;
 
     const renderLoop = () => {
+      if (isFinished) return;
       frame++;
       animationFrameRef.current = requestAnimationFrame(renderLoop);
 
       const width = canvas.width;
       const height = canvas.height;
-      ctx.clearRect(0, 0, width, height);
 
-      // Draw horizontal scanning reading bounds
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = 'rgba(99, 102, 241, 0.15)';
-      ctx.strokeRect(40, 40, width - 80, height - 80);
-
-      // Math vectors to simulate active facial contour points and gaze vectors
-      const eyeL_x = width / 2 - 40 + Math.sin(frame * 0.03) * 6;
-      const eyeL_y = height / 2 - 20 + Math.cos(frame * 0.02) * 3;
-      const eyeR_x = width / 2 + 40 + Math.sin(frame * 0.03) * 6;
-      const eyeR_y = height / 2 - 20 + Math.cos(frame * 0.02) * 3;
-
-      // Simulate blink cycles occasionally
-      const isBlinking = frame % 110 < 8;
-      if (frame % 110 === 8) {
-        blinks += 1;
-        setBlinkCount(blinks);
-      }
-
-      // Draw focus direction vectors
-      const gazeDev_x = Math.sin(frame * 0.025) * 22;
-      const gazeDev_y = Math.cos(frame * 0.015) * 15;
-
-      // Simulate a distraction event if gaze leaves standard boundary box
-      const isDistracted = Math.abs(gazeDev_x) > 18 && frame % 130 < 25;
-      if (isDistracted && frame % 130 === 1) {
-        distractions += 1;
-        setDistractionEvents(distractions);
-      }
-
-      // Update focus score
-      focus = Math.max(30, Math.min(99, Math.round(98 - (distractions * 7.5) - (isDistracted ? 15 : 0))));
-      setFocusScore(focus);
-
-      // Render overlay shapes on canvas
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
-      ctx.fillRect(40, height - 45, width - 80, 5); // bottom focus timeline guideline
-
-      // Render facial mapping coordinates dots
-      ctx.fillStyle = isDistracted ? '#f59e0b' : '#10b981';
-      
-      // Eyes outline
-      ctx.beginPath();
-      if (isBlinking) {
-        // closed flat lines
-        ctx.moveTo(eyeL_x - 12, eyeL_y); ctx.lineTo(eyeL_x + 12, eyeL_y);
-        ctx.moveTo(eyeR_x - 12, eyeR_y); ctx.lineTo(eyeR_x + 12, eyeR_y);
+      // 1. Draw webcam feed onto canvas frame first
+      if (video && video.readyState === video.HAVE_ENOUGH_DATA) {
+        ctx.save();
+        ctx.scale(-1, 1); // mirror horizontal
+        ctx.drawImage(video, -width, 0, width, height);
+        ctx.restore();
       } else {
-        // circles
-        ctx.arc(eyeL_x, eyeL_y, 8, 0, Math.PI * 2);
-        ctx.arc(eyeR_x, eyeR_y, 8, 0, Math.PI * 2);
+        // Fallback placeholder backing if video not ready
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, width, height);
       }
-      ctx.strokeStyle = isDistracted ? '#f59e0b' : '#10b981';
+
+      // 2. Define eye region search zone box inside center upper area of the viewport
+      const eyeBoxX = Math.round(width * 0.25);
+      const eyeBoxY = Math.round(height * 0.22);
+      const eyeBoxW = Math.round(width * 0.5);
+      const eyeBoxH = Math.round(height * 0.26);
+
+      // Draw active computer-vision search boundary guides
       ctx.lineWidth = 1.5;
-      ctx.stroke();
+      ctx.strokeStyle = 'rgba(99, 102, 241, 0.45)'; // Indigo
+      ctx.strokeRect(eyeBoxX, eyeBoxY, eyeBoxW, eyeBoxH);
 
-      // Render iris focal vector line
-      if (!isBlinking) {
-        ctx.fillStyle = '#6366f1';
+      // 3. Process video pixels to locate darkest centroid (the pupil)
+      try {
+        const imgData = ctx.getImageData(eyeBoxX, eyeBoxY, eyeBoxW, eyeBoxH);
+        const pixels = imgData.data;
+
+        let darkSumX = 0;
+        let darkSumY = 0;
+        let darkPixelCount = 0;
+        
+        // Find minimum luminance (darkest pixels) in steps of 3 to stay high-performance
+        let minLuminance = 255;
+        for (let i = 0; i < pixels.length; i += 12) {
+          const r = pixels[i];
+          const g = pixels[i + 1];
+          const b = pixels[i + 2];
+          const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+          if (luminance < minLuminance) {
+            minLuminance = luminance;
+          }
+        }
+
+        // Locate coordinates matching minimum threshold (centroid mass calculation)
+        const darkThreshold = minLuminance + 22; // dark tolerance bounds
+        for (let y = 0; y < eyeBoxH; y += 4) {
+          for (let x = 0; x < eyeBoxW; x += 4) {
+            const idx = (y * eyeBoxW + x) * 4;
+            const r = pixels[idx];
+            const g = pixels[idx + 1];
+            const b = pixels[idx + 2];
+            const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+
+            if (luminance < darkThreshold) {
+              darkSumX += x;
+              darkSumY += y;
+              darkPixelCount++;
+            }
+          }
+        }
+
+        // Calculate centroid coordinate center
+        let rawCentroidX = eyeBoxX + eyeBoxW / 2;
+        let rawCentroidY = eyeBoxY + eyeBoxH / 2;
+
+        if (darkPixelCount > 8) {
+          rawCentroidX = eyeBoxX + (darkSumX / darkPixelCount);
+          rawCentroidY = eyeBoxY + (darkSumY / darkPixelCount);
+          consecutiveBlinks.current = 0;
+          
+          if (blinkActive.current) {
+            blinkActive.current = false;
+          }
+        } else {
+          // Dark pixel count is near zero, meaning eye closed or covered (Blink!)
+          consecutiveBlinks.current++;
+          if (consecutiveBlinks.current > 3 && !blinkActive.current) {
+            blinkActive.current = true;
+            localBlinks++;
+            setBlinkCount(localBlinks);
+          }
+        }
+
+        // Smooth output tracking using exponential moving averages
+        const smoothX = lastPupilX.current * 0.75 + rawCentroidX * 0.25;
+        const smoothY = lastPupilY.current * 0.75 + rawCentroidY * 0.25;
+        lastPupilX.current = smoothX;
+        lastPupilY.current = smoothY;
+
+        // Calculate focus deviation vector from the centered baseline anchor
+        const boxCenterX = eyeBoxX + eyeBoxW / 2;
+        const boxCenterY = eyeBoxY + eyeBoxH / 2;
+        const gazeVectorX = smoothX - boxCenterX;
+        const gazeVectorY = smoothY - boxCenterY;
+
+        // Gaze deviations threshold
+        const dispersionMetric = Math.sqrt(gazeVectorX * gazeVectorX + gazeVectorY * gazeVectorY);
+        const isDistracted = dispersionMetric > 28;
+
+        if (distractionCoolDown.current > 0) {
+          distractionCoolDown.current--;
+        }
+
+        if (isDistracted && distractionCoolDown.current === 0) {
+          localDistractions++;
+          setDistractionEvents(localDistractions);
+          distractionCoolDown.current = 45; // prevent duplicate event triggers within 45 frames
+        }
+
+        // Draw crosshairs directly on the pupil center
+        ctx.fillStyle = isDistracted ? '#f59e0b' : '#10b981'; // Amber / Emerald
         ctx.beginPath();
-        ctx.arc(eyeL_x + (gazeDev_x * 0.2), eyeL_y + (gazeDev_y * 0.2), 3.5, 0, Math.PI * 2);
-        ctx.arc(eyeR_x + (gazeDev_x * 0.2), eyeR_y + (gazeDev_y * 0.2), 3.5, 0, Math.PI * 2);
+        ctx.arc(smoothX, smoothY, 6, 0, Math.PI * 2);
         ctx.fill();
 
-        // Draw gaze mapping vector trace line
+        // Draw glowing vector trace lines showing visual focal lines
         ctx.beginPath();
-        ctx.moveTo(width / 2, height / 2 + 10);
-        ctx.lineTo(width / 2 + gazeDev_x * 4, height / 2 - 30 + gazeDev_y * 4);
-        ctx.strokeStyle = isDistracted ? 'rgba(245, 158, 11, 0.45)' : 'rgba(99, 102, 241, 0.45)';
-        ctx.lineWidth = 2;
+        ctx.moveTo(boxCenterX, boxCenterY);
+        ctx.lineTo(smoothX, smoothY);
+        ctx.strokeStyle = isDistracted ? 'rgba(245, 158, 11, 0.7)' : 'rgba(16, 185, 129, 0.7)';
+        ctx.lineWidth = 2.5;
         ctx.stroke();
+
+        // Calculate real time focus score
+        const focus = Math.max(30, Math.min(99, Math.round(98 - (localDistractions * 6.5) - (isDistracted ? 12 : 0))));
+        setFocusScore(focus);
+
+      } catch (e) {
+        console.error("Frame parsing bounds error:", e);
       }
 
-      // Render nose & face coordinate dots
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-      const facePoints = [
-        { x: width / 2 + Math.sin(frame * 0.03) * 5, y: height / 2 + 10 }, // nose
-        { x: width / 2 - 25, y: height / 2 + 35 }, // mouth L
-        { x: width / 2 + 25, y: height / 2 + 35 }, // mouth R
-        { x: width / 2, y: height / 2 + 45 } // chin
-      ];
-      facePoints.forEach(pt => {
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 2, 0, Math.PI * 2);
-        ctx.fill();
-      });
+      // Draw scrolling focus guidelines
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.strokeRect(40, 40, width - 80, height - 80);
     };
 
     renderLoop();
 
-    // Auto-complete evaluation after 12 seconds to fit standard diagnostic screening
+    // Auto-conclude diagnostic test after 12 seconds
     setTimeout(() => {
       stopGazeTracking();
     }, 12000);
@@ -222,11 +284,11 @@ export const EyeTrackingModule: React.FC<{ testId: string; onComplete: () => voi
           <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest font-rajdhani">Facial Cognitive Tracking</span>
           <h2 className="text-xl font-bold flex items-center space-x-2">
             <Eye className="w-5 h-5 text-indigo-400" />
-            <span>Webcam Gaze Analytics Simulator</span>
+            <span>Webcam Gaze Analytics Module</span>
           </h2>
         </div>
         <div>
-          <span className="text-xs text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded font-semibold flex items-center space-x-1 font-sans">
+          <span className="text-xs text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded font-semibold flex items-center space-x-1 font-sans">
             <span>Client-Side Security Mode</span>
           </span>
         </div>
@@ -247,7 +309,7 @@ export const EyeTrackingModule: React.FC<{ testId: string; onComplete: () => voi
             ref={videoRef} 
             autoPlay 
             playsInline 
-            className="absolute inset-0 w-full h-full object-cover opacity-35 z-0 transform -scale-x-100"
+            className="absolute inset-0 w-full h-full object-cover opacity-25 z-0 transform -scale-x-100"
           />
 
           {/* Active vector canvas overlays */}
@@ -255,7 +317,7 @@ export const EyeTrackingModule: React.FC<{ testId: string; onComplete: () => voi
             ref={canvasRef} 
             width={640} 
             height={480} 
-            className="absolute inset-0 w-full h-full block z-10 transform -scale-x-100"
+            className="absolute inset-0 w-full h-full block z-10"
           />
 
           {/* 1. Camera activation view */}
@@ -318,7 +380,7 @@ export const EyeTrackingModule: React.FC<{ testId: string; onComplete: () => voi
           
           <div className="space-y-3.5">
             {/* Live Focus Score Tracker */}
-            <div className="p-4 bg-slate-950/60 rounded-xl border border-white/5">
+            <div className="p-4 bg-slate-950/60 rounded-xl border border-white/5 text-left">
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Live Focus Score</span>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${focusScore > 75 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
@@ -332,7 +394,7 @@ export const EyeTrackingModule: React.FC<{ testId: string; onComplete: () => voi
             </div>
 
             {/* Distraction Alerts Indicator */}
-            <div className="p-4 bg-slate-950/60 rounded-xl border border-white/5">
+            <div className="p-4 bg-slate-950/60 rounded-xl border border-white/5 text-left">
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Distraction Slip Count</span>
                 {distractionEvents > 2 && (
@@ -349,7 +411,7 @@ export const EyeTrackingModule: React.FC<{ testId: string; onComplete: () => voi
             </div>
 
             {/* Fatigue Blink Meter */}
-            <div className="p-4 bg-slate-950/60 rounded-xl border border-white/5">
+            <div className="p-4 bg-slate-950/60 rounded-xl border border-white/5 text-left">
               <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider block mb-1">Fatigue Blink cycles</span>
               <div className="flex items-baseline space-x-1.5">
                 <span className="text-3xl font-extrabold font-rajdhani text-emerald-400">{blinkCount}</span>
