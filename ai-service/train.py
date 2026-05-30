@@ -1,100 +1,76 @@
 import os
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+import xgboost as xgb
+from sklearn.tree import DecisionTreeClassifier
 import joblib
+import pandas as pd
 
 MODEL_DIR = "models"
 os.makedirs(MODEL_DIR, exist_ok=True)
 
-def train_dyslexia_model():
-    print("Generating synthetic keystroke data for Dyslexia model...")
-    # Features: [avg_dwell_time, avg_flight_time, letter_substitutions]
-    # Label: 0 (Low Risk), 1 (Medium Risk), 2 (High Risk)
+def train_fusion_model():
+    print("Generating synthetic multi-modal data for Fusion model...")
+    # Features: [gaze_dispersion, blink_interval, avg_dwell, avg_flight, rms_amplitude, hesitation_events]
+    # Label: Cognitive Engagement Score (0-100)
     
-    # Generate healthy data (Low risk)
-    X_healthy = np.random.normal(loc=[100, 150, 0.5], scale=[20, 30, 0.5], size=(1000, 3))
-    y_healthy = np.zeros(1000)
+    # High Engagement
+    X_high = np.random.normal(loc=[15, 12, 100, 150, 0.08, 1], scale=[5, 2, 20, 30, 0.02, 1], size=(500, 6))
+    y_high = np.random.normal(loc=90, scale=5, size=500)
     
-    # Generate moderate data (Medium risk)
-    X_med = np.random.normal(loc=[150, 250, 2], scale=[30, 40, 1], size=(1000, 3))
-    y_med = np.ones(1000)
+    # Moderate Engagement
+    X_med = np.random.normal(loc=[35, 8, 150, 250, 0.05, 5], scale=[10, 3, 30, 40, 0.01, 2], size=(500, 6))
+    y_med = np.random.normal(loc=65, scale=10, size=500)
     
-    # Generate severe data (High risk)
-    X_high = np.random.normal(loc=[200, 400, 5], scale=[40, 60, 2], size=(1000, 3))
-    y_high = np.full(1000, 2)
-    
-    X = np.vstack([X_healthy, X_med, X_high])
-    # Clip negative values
-    X = np.maximum(X, 0)
-    y = np.concatenate([y_healthy, y_med, y_high])
-    
-    print("Training Keystroke RandomForestClassifier...")
-    clf = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42)
-    clf.fit(X, y)
-    
-    joblib.dump(clf, os.path.join(MODEL_DIR, "dyslexia_model.joblib"))
-    print("Dyslexia model saved.")
-
-def train_adhd_model():
-    print("Generating synthetic gaze data for ADHD model...")
-    # Features: [gaze_dispersion, avg_blink_interval]
-    # Label: 0 (Low), 1 (Medium), 2 (High)
-    
-    # Low risk (Low dispersion, normal blinks 10-15s)
-    X_low = np.random.normal(loc=[15, 12], scale=[5, 2], size=(1000, 2))
-    y_low = np.zeros(1000)
-    
-    # Medium risk
-    X_med = np.random.normal(loc=[35, 8], scale=[10, 3], size=(1000, 2))
-    y_med = np.ones(1000)
-    
-    # High risk (High dispersion, very low or very high blinks, let's say very low ~5s)
-    X_high = np.random.normal(loc=[60, 5], scale=[15, 2], size=(1000, 2))
-    y_high = np.full(1000, 2)
-    
-    X = np.vstack([X_low, X_med, X_high])
-    X = np.maximum(X, 0)
-    y = np.concatenate([y_low, y_med, y_high])
-    
-    print("Training Gaze RandomForestClassifier...")
-    clf = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42)
-    clf.fit(X, y)
-    
-    joblib.dump(clf, os.path.join(MODEL_DIR, "adhd_model.joblib"))
-    print("ADHD model saved.")
-
-def train_speech_model():
-    print("Generating synthetic audio data for Speech Fluency model...")
-    # Features: [avg_rms_amplitude, hesitation_events]
-    # Label: Fluency Score (0-100)
-    
-    # High fluency
-    X_high = np.random.normal(loc=[0.08, 1], scale=[0.02, 1], size=(500, 2))
-    y_high = np.random.normal(loc=95, scale=5, size=500)
-    
-    # Medium fluency
-    X_med = np.random.normal(loc=[0.05, 5], scale=[0.01, 2], size=(500, 2))
-    y_med = np.random.normal(loc=70, scale=10, size=500)
-    
-    # Low fluency
-    X_low = np.random.normal(loc=[0.02, 15], scale=[0.01, 5], size=(500, 2))
-    y_low = np.random.normal(loc=40, scale=15, size=500)
+    # Low Engagement (High stress/distraction)
+    X_low = np.random.normal(loc=[60, 5, 200, 400, 0.02, 15], scale=[15, 2, 40, 60, 0.01, 5], size=(500, 6))
+    y_low = np.random.normal(loc=35, scale=15, size=500)
     
     X = np.vstack([X_high, X_med, X_low])
     X = np.maximum(X, 0)
     y = np.concatenate([y_high, y_med, y_low])
     y = np.clip(y, 0, 100)
     
-    print("Training Speech RandomForestRegressor...")
-    reg = RandomForestRegressor(n_estimators=100, max_depth=5, random_state=42)
-    reg.fit(X, y)
+    print("Training Multi-Modal Fusion XGBoost Regressor...")
+    model = xgb.XGBRegressor(n_estimators=100, max_depth=5, learning_rate=0.1, random_state=42)
+    model.fit(X, y)
     
-    joblib.dump(reg, os.path.join(MODEL_DIR, "speech_model.joblib"))
-    print("Speech model saved.")
+    joblib.dump(model, os.path.join(MODEL_DIR, "fusion_model.joblib"))
+    print("Fusion model saved.")
+
+def train_recommendation_model():
+    print("Generating synthetic cognitive clusters for Recommendation model...")
+    # Features: [focus_score, fluency_score, distraction_events]
+    # Label classes (Intervention Categories):
+    # 0 -> "Visual-Spatial Interventions" (Low Focus, High Distractions)
+    # 1 -> "Phonetic Drills" (Low Fluency, Stable Focus)
+    # 2 -> "Advanced Challenge" (High Focus, High Fluency)
+    # 3 -> "Cognitive Rest Period" (Extremely low scores across the board)
+    
+    X_vis = np.random.normal(loc=[40, 85, 15], scale=[10, 5, 3], size=(500, 3))
+    y_vis = np.zeros(500)
+    
+    X_phon = np.random.normal(loc=[85, 40, 2], scale=[5, 10, 1], size=(500, 3))
+    y_phon = np.ones(500)
+    
+    X_adv = np.random.normal(loc=[95, 95, 1], scale=[3, 3, 1], size=(500, 3))
+    y_adv = np.full(500, 2)
+    
+    X_rest = np.random.normal(loc=[30, 35, 10], scale=[8, 8, 4], size=(500, 3))
+    y_rest = np.full(500, 3)
+    
+    X = np.vstack([X_vis, X_phon, X_adv, X_rest])
+    X = np.maximum(X, 0)
+    y = np.concatenate([y_vis, y_phon, y_adv, y_rest])
+    
+    print("Training DecisionTree Recommendation Classifier...")
+    clf = DecisionTreeClassifier(max_depth=6, random_state=42)
+    clf.fit(X, y)
+    
+    joblib.dump(clf, os.path.join(MODEL_DIR, "recommendation_model.joblib"))
+    print("Recommendation model saved.")
 
 if __name__ == "__main__":
-    print("Initializing NeuroLearn AI Model Training Pipeline...")
-    train_dyslexia_model()
-    train_adhd_model()
-    train_speech_model()
+    print("Initializing NeuroLearn Deep AI Model Training Pipeline...")
+    train_fusion_model()
+    train_recommendation_model()
     print("All models trained and saved to 'models/' directory.")

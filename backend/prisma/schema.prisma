@@ -69,6 +69,8 @@ model StudentProfile {
   results        TestResult[]
   aiReports      AIReport[]
   badges         Badge[]
+  telemetrySessions TelemetrySession[]
+  audioRecords      AudioRecord[]
 }
 
 model ReadingTest {
@@ -117,6 +119,7 @@ model AIReport {
   // Relations
   studentId                String
   student                  StudentProfile  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  explainLogs              ExplainabilityLog[] @relation("ReportExplainLogs")
 }
 
 model Badge {
@@ -153,4 +156,56 @@ model AuditLog {
   // Relations
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ----------------------------------------------------------------------
+// Phase 5 & 8: Deep Telemetry & AI Explainability Models
+// ----------------------------------------------------------------------
+
+model TelemetrySession {
+  id               String   @id @default(uuid())
+  sessionStartTime DateTime @default(now())
+  sessionEndTime   DateTime?
+  gazeVectorsX     Float[]
+  gazeVectorsY     Float[]
+  blinkIntervals   Float[]
+  keyDwellTimes    Float[]
+  keyFlightTimes   Float[]
+  
+  // Relations
+  studentId        String
+  student          StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  explainLogs      ExplainabilityLog[]
+}
+
+model AudioRecord {
+  id             String   @id @default(uuid())
+  recordedAt     DateTime @default(now())
+  s3Url          String?  // If stored externally
+  localFilePath  String?  // If stored locally
+  durationMs     Int
+  transcript     String?  @db.Text
+  
+  // Relations
+  studentId      String
+  student        StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  explainLogs    ExplainabilityLog[]
+}
+
+model ExplainabilityLog {
+  id               String   @id @default(uuid())
+  createdAt        DateTime @default(now())
+  aiModelVersion   String   @default("ensemble-v2.0")
+  predictionType   String
+  confidenceScore  Float
+  explanationText  String   @db.Text
+  featureWeights   Json?    // SHAP or tree weights
+  
+  // Relations
+  telemetryId      String?
+  telemetry        TelemetrySession? @relation(fields: [telemetryId], references: [id])
+  audioId          String?
+  audio            AudioRecord?      @relation(fields: [audioId], references: [id])
+  aiReportId       String?
+  aiReport         AIReport?         @relation("ReportExplainLogs", fields: [aiReportId], references: [id])
 }

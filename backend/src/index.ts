@@ -11,6 +11,11 @@ import { setupWorker } from './worker';
 import * as Sentry from '@sentry/node';
 import { nodeProfilingIntegration } from '@sentry/profiling-node';
 import client from 'prom-client';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import multer from 'multer';
+import axios from 'axios';
+import FormData from 'form-data';
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN || '',
@@ -65,6 +70,21 @@ app.use((req, res, next) => {
   next();
 });
 
+// Phase 9: Enterprise Security
+app.use(helmet());
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per `window`
+  message: 'Too many requests from this IP, please try again after 15 minutes',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/', apiLimiter);
+
+// Multer for memory storage of audio files
+const upload = multer({ storage: multer.memoryStorage() });
+
 // Zod schemas for validation
 const ScreeningSubmitSchema = z.object({
   studentId: z.string().uuid(),
@@ -77,12 +97,6 @@ const ScreeningSubmitSchema = z.object({
   aiPayload: z.any().optional(), // Raw data to send to AI models
   aiType: z.enum(['DYSLEXIA', 'ADHD', 'SPEECH']).optional()
 });
-
-// 1. Basic security rate limiting simulated middleware
-const rateLimiter = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  next();
-};
-app.use(rateLimiter);
 
 // 2. JWT verification middleware
 const authenticateToken = (req: any, res: express.Response, next: express.NextFunction) => {
@@ -153,6 +167,42 @@ app.post('/api/screenings/submit', authenticateToken, async (req: any, res) => {
     }
     console.error(error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Audio Upload Route for True Speech Inference
+app.post('/api/screenings/submit-audio', authenticateToken, upload.single('audio'), async (req: any, res) => {
+  try {
+    const studentId = req.body.studentId;
+    if (!req.file) {
+      return res.status(400).json({ error: 'No audio file uploaded' });
+    }
+
+    // Pass the file buffer directly to the AI service
+    const form = new FormData();
+    form.append('file', req.file.buffer, req.file.originalname || 'audio.webm');
+    
+    // Create an AudioRecord in DB
+    const audioRecord = await prisma.audioRecord.create({
+      data: {
+        studentId: studentId,
+        durationMs: 0, // This will be updated later
+        localFilePath: 'memory',
+      }
+    });
+
+    const aiResponse = await axios.post(`${process.env.AI_SERVICE_URL}/ai/predict/speech-whisper`, form, {
+      headers: { ...form.getHeaders() }
+    });
+
+    res.status(200).json({
+      message: 'Audio processed by Whisper AI successfully',
+      aiResponse: aiResponse.data,
+      recordId: audioRecord.id
+    });
+  } catch (error) {
+    console.error('Audio processing error:', error);
+    res.status(500).json({ error: 'Failed to process audio via AI Service' });
   }
 });
 

@@ -10,13 +10,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mediapipe/camera_utils": "^0.3.1675466862",
+    "@mediapipe/drawing_utils": "^0.3.1675466124",
+    "@mediapipe/face_mesh": "^0.4.1633559619",
     "@sentry/react": "^10.55.0",
     "canvas-confetti": "^1.6.0",
     "framer-motion": "^11.0.8",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.344.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "recharts": "^2.12.2",
+    "recharts": "^2.15.4",
     "zustand": "^4.5.1"
   },
   "devDependencies": {
