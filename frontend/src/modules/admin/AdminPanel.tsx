@@ -23,7 +23,7 @@ import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianG
 import { apiClient } from '../../services/api/client';
 
 export const AdminPanel: React.FC = () => {
-  const { addNotification } = useStore();
+  const { addNotification, user } = useStore();
   const [logs, setLogs] = useState<Array<{ id: string; time: string; event: string; status: string }>>([]);
   const [users, setUsers] = useState<Array<{ id: string; name: string; email: string; role: string; createdAt: string }>>([]);
   const [searchQuery, setSearchQuery] = useState('');

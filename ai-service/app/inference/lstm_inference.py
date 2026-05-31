@@ -1,6 +1,7 @@
 import os
 import torch
 import numpy as np
+import time
 from app.models.cognitive_lstm import CognitiveLSTM
 
 MODEL_DIR = "models"
@@ -25,6 +26,7 @@ def predict_gaze_typing_fusion(payload):
     """
     True Multi-Modal Temporal AI Fusion (PyTorch LSTM)
     """
+    start_time = time.time()
     model = get_fusion_model()
     
     # Convert static payload into a sequential time-series vector (simulating 10 intervals)
@@ -60,6 +62,9 @@ def predict_gaze_typing_fusion(payload):
     else:
         explanation += " Student demonstrated stable multi-modal attention across the temporal window."
 
+    end_time = time.time()
+    latency_ms = (end_time - start_time) * 1000
+
     return {
         "prediction": "MULTI_MODAL_LSTM_FUSION",
         "cognitive_engagement_score": round(engagement_score, 2),
@@ -68,5 +73,5 @@ def predict_gaze_typing_fusion(payload):
             "reasoning": explanation,
             "temporal_variance": "Analyzed over 10 sequential inference frames."
         },
-        "latency_ms": 18.2
+        "latency_ms": round(latency_ms, 2)
     }

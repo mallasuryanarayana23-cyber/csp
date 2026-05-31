@@ -16,21 +16,21 @@ def train_lstm_fusion_model():
     def generate_sequence(loc, scale):
         return np.random.normal(loc=loc, scale=scale, size=(samples_per_class, seq_length, 6))
     
-    # High Engagement sequences
-    X_high = generate_sequence([15, 12, 100, 150, 0.08, 1], [5, 2, 20, 30, 0.02, 1])
-    y_high = np.random.normal(loc=90, scale=5, size=samples_per_class)
+    # 1. Neurotypical (NT) Cohort Profile (Low gaze dispersion, healthy blink, rapid/consistent typing, minimal hesitation)
+    X_nt = generate_sequence([12.0, 5.0, 95.0, 125.0, 0.08, 0.5], [3.0, 1.0, 15.0, 20.0, 0.02, 0.5])
+    y_nt = np.random.normal(loc=92.0, scale=4.0, size=samples_per_class)
     
-    # Moderate Engagement sequences
-    X_med = generate_sequence([35, 8, 150, 250, 0.05, 5], [10, 3, 30, 40, 0.01, 2])
-    y_med = np.random.normal(loc=65, scale=10, size=samples_per_class)
+    # 2. Dyslexic (DYS) Cohort Profile (Elevated gaze re-reading, shorter blink interval/fatigue, high dwell/flight times, moderate hesitation)
+    X_dys = generate_sequence([24.0, 3.0, 210.0, 320.0, 0.04, 5.5], [6.0, 0.8, 35.0, 50.0, 0.01, 1.5])
+    y_dys = np.random.normal(loc=52.0, scale=8.0, size=samples_per_class)
     
-    # Low Engagement sequences (High stress)
-    X_low = generate_sequence([60, 5, 200, 400, 0.02, 15], [15, 2, 40, 60, 0.01, 5])
-    y_low = np.random.normal(loc=35, scale=15, size=samples_per_class)
+    # 3. ADHD Cohort Profile (Extremely high gaze dispersion/distraction, erratic blink interval, impulsive dwell but highly variable flight, high hesitation)
+    X_adhd = generate_sequence([58.0, 9.5, 75.0, 280.0, 0.06, 8.5], [12.0, 2.5, 10.0, 90.0, 0.02, 2.5])
+    y_adhd = np.random.normal(loc=42.0, scale=10.0, size=samples_per_class)
     
-    X = np.vstack([X_high, X_med, X_low])
+    X = np.vstack([X_nt, X_dys, X_adhd])
     X = np.maximum(X, 0)
-    y = np.concatenate([y_high, y_med, y_low])
+    y = np.concatenate([y_nt, y_dys, y_adhd])
     y = np.clip(y, 0, 100)
     
     # Convert to PyTorch tensors
@@ -41,8 +41,8 @@ def train_lstm_fusion_model():
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     
-    print("Training Multi-Modal Fusion LSTM (PyTorch)...")
-    epochs = 30
+    print("Training Multi-Modal Fusion LSTM (PyTorch) on Neuro-Diverse cohorts...")
+    epochs = 40
     for epoch in range(epochs):
         model.train()
         optimizer.zero_grad()

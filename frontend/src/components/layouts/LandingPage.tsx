@@ -148,7 +148,12 @@ export const LandingPage: React.FC<{ onEnterDashboard: () => void }> = ({ onEnte
             <div className="flex flex-col sm:flex-row items-center gap-4">
               <button
                 onClick={() => {
-                  login('sophia@neurolearn.org', 'student');
+                  login('sandbox-token', {
+                    id: 'student-2',
+                    name: 'Sophia Alvarez',
+                    email: 'sophia@neurolearn.org',
+                    role: 'STUDENT'
+                  });
                   onEnterDashboard();
                 }}
                 className="glow-btn w-full sm:w-auto px-8 py-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 font-bold hover:shadow-md hover:scale-102 transition-all duration-300 flex items-center justify-center space-x-2 group cursor-pointer"
@@ -158,7 +163,12 @@ export const LandingPage: React.FC<{ onEnterDashboard: () => void }> = ({ onEnte
               </button>
               <button
                 onClick={() => {
-                  login('sarah@neurolearn.org', 'teacher');
+                  login('sandbox-token', {
+                    id: 'teacher-1',
+                    name: 'Sarah Connor',
+                    email: 'sarah@neurolearn.org',
+                    role: 'TEACHER'
+                  });
                   onEnterDashboard();
                 }}
                 className="w-full sm:w-auto px-8 py-4 rounded-xl bg-slate-900/80 border border-white/10 hover:border-white/20 font-bold hover:bg-slate-800 transition-all duration-300 flex items-center justify-center space-x-2 cursor-pointer"
@@ -456,7 +466,12 @@ export const LandingPage: React.FC<{ onEnterDashboard: () => void }> = ({ onEnte
           <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
             <button
               onClick={() => {
-                login('sophia@neurolearn.org', 'student');
+                login('sandbox-token', {
+                  id: 'student-2',
+                  name: 'Sophia Alvarez',
+                  email: 'sophia@neurolearn.org',
+                  role: 'STUDENT'
+                });
                 onEnterDashboard();
               }}
               className="glow-btn w-full sm:w-auto px-8 py-4 rounded-xl bg-white text-slate-900 font-bold hover:shadow-md hover:scale-102 transition-all duration-300 cursor-pointer"

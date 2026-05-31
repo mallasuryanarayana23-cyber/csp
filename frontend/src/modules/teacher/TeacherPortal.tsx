@@ -22,7 +22,8 @@ import {
   RefreshCw,
   Eye,
   CheckCircle,
-  FileBadge
+  FileBadge,
+  Mic
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import jsPDF from 'jspdf';
@@ -110,6 +111,12 @@ export const TeacherPortal: React.FC = () => {
     ];
     const sum = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     return colors[sum % colors.length];
+  };
+
+  const getRiskColor = (tier: string) => {
+    if (tier === 'HIGH') return 'text-rose-400 bg-rose-500/10 border-rose-500/25';
+    if (tier === 'MEDIUM') return 'text-amber-400 bg-amber-500/10 border-amber-500/25';
+    return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25';
   };
 
   // Filter students based on search query and risk rating

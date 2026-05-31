@@ -15,10 +15,10 @@ import { LoginPage } from './modules/auth/LoginPage';
 import { RegisterPage } from './modules/auth/RegisterPage';
 import { useStore } from './store/useStore';
 import { apiClient } from './services/api/client';
-import { HelpCircle, Sparkles } from 'lucide-react';
+import { HelpCircle, Sparkles, BrainCircuit, X } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const { user, activeRole, accessibility, addNotification } = useStore();
+  const { user, activeRole, accessibility, addNotification, connectWebSocket } = useStore();
   const [showLanding, setShowLanding] = useState(true);
   const [isRegistering, setIsRegistering] = useState(false);
 
@@ -38,6 +38,12 @@ export const App: React.FC = () => {
     };
   }, [accessibility.readingRuler]);
 
+  useEffect(() => {
+    if (localStorage.getItem('neurolearn_token')) {
+      connectWebSocket();
+    }
+  }, [connectWebSocket]);
+
   // Dynamic chatbot assistant
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
@@ -45,16 +51,16 @@ export const App: React.FC = () => {
     { sender: 'bot', text: 'Hello! I am NeuroBot. Ask me anything about dyslexia, attention tracking, or accommodations!' }
   ]);
 
-  const handleSendChat = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim()) return;
+  const handleSendChat = async (e: React.FormEvent, customText?: string) => {
+    if (e) e.preventDefault();
+    const textToSubmit = customText || chatInput;
+    if (!textToSubmit.trim()) return;
 
-    const userText = chatInput;
-    setChatHistory(prev => [...prev, { sender: 'user', text: userText }]);
+    setChatHistory(prev => [...prev, { sender: 'user', text: textToSubmit }]);
     setChatInput('');
 
     try {
-      const res = await apiClient.post('/api/chat', { message: userText });
+      const res = await apiClient.post('/api/chat', { message: textToSubmit });
       setChatHistory(prev => [...prev, { sender: 'bot', text: res.data.reply }]);
     } catch (err) {
       setChatHistory(prev => [...prev, { sender: 'bot', text: 'Sorry, I am unable to connect to the NeuroLearn backend right now.' }]);
@@ -203,12 +209,7 @@ export const App: React.FC = () => {
                     key={chip}
                     type="button"
                     onClick={() => {
-                      setChatInput(chip);
-                      // Trigger submit
-                      setTimeout(() => {
-                        const fakeEvent = { preventDefault: () => {} } as any;
-                        handleSendChat(fakeEvent, chip);
-                      }, 100);
+                      handleSendChat(null as any, chip);
                     }}
                     className="px-2.5 py-1 bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-indigo-500/20 text-[9px] font-semibold text-slate-400 hover:text-slate-200 rounded-lg transition-all cursor-pointer"
                   >

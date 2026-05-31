@@ -7,7 +7,8 @@ export const executeJob = async (data: any) => {
   console.log(`[Worker-Job] Executing AI inference for student: ${studentId}`);
   
   let endpoint = '';
-  if (type === 'DYSLEXIA' || type === 'ADHD') endpoint = '/ai/predict/fusion';
+  if (type === 'DYSLEXIA') endpoint = '/ai/predict/dyslexia';
+  else if (type === 'ADHD') endpoint = '/ai/predict/adhd';
   else if (type === 'SPEECH') endpoint = '/ai/predict/speech-whisper';
 
   try {

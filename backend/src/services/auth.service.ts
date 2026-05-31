@@ -19,7 +19,14 @@ export class AuthService {
       role: user.role,
       studentProfileId: user.studentProfile?.id,
     };
-    return jwt.sign(payload, env.JWT_SECRET, { expiresIn: '7d' });
+    return jwt.sign(payload, env.JWT_SECRET, { expiresIn: '1d' }); // 1 day access token
+  }
+
+  static generateRefreshToken(user: any): string {
+    const payload = {
+      userId: user.id,
+    };
+    return jwt.sign(payload, env.JWT_SECRET, { expiresIn: '30d' }); // 30 day refresh token
   }
 
   static async register(data: { name: string; email: string; passwordHash: string; role: string; schoolName?: string }) {

@@ -19,6 +19,7 @@ export interface StudentProfile {
   lastTested?: string;
   streakDays: number;
   userId: string;
+  parentId?: string;
   badges?: Array<{ id: string; name: string; icon: string; date: string }>;
   metricsHistory?: Array<{ date: string; wpm: number; focusScore: number; readingSpeed?: number; distractionEvents?: number }>;
   completedTests?: string[];
@@ -93,11 +94,40 @@ interface NeuroStore {
   addNotification: (title: string, message: string, type: 'info' | 'warning' | 'success') => void;
   markNotificationRead: (id: string) => void;
   fetchReadingTests: () => Promise<void>;
+  fetchStudentDetail: (studentId: string) => Promise<any>;
 }
 
 export const useStore = create<NeuroStore>((set, get) => ({
-  user: null,
-  activeRole: null,
+  user: (() => {
+    try {
+      const saved = localStorage.getItem('neurolearn_user');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed === 'object' && parsed !== null && parsed.role) {
+          return parsed;
+        }
+        localStorage.removeItem('neurolearn_token');
+        localStorage.removeItem('neurolearn_user');
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  })(),
+  activeRole: (() => {
+    try {
+      const saved = localStorage.getItem('neurolearn_user');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed === 'object' && parsed !== null && parsed.role) {
+          return parsed.role;
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  })(),
   accessibility: {
     dyslexiaFont: false,
     highContrast: false,
@@ -180,12 +210,14 @@ export const useStore = create<NeuroStore>((set, get) => ({
 
   login: (token, user) => {
     localStorage.setItem('neurolearn_token', token);
+    localStorage.setItem('neurolearn_user', JSON.stringify(user));
     set({ user, activeRole: user.role });
     get().connectWebSocket();
   },
 
   logout: () => {
     localStorage.removeItem('neurolearn_token');
+    localStorage.removeItem('neurolearn_user');
     if (get().wsClient) {
       get().wsClient?.close();
     }
@@ -258,6 +290,16 @@ export const useStore = create<NeuroStore>((set, get) => ({
     }
   },
 
+  fetchStudentDetail: async (studentId: string) => {
+    try {
+      const res = await apiClient.get(`/api/students/${studentId}`);
+      return res.data;
+    } catch (e) {
+      console.error('Failed to fetch student details', e);
+      return null;
+    }
+  },
+
   addReadingTestResult: async (studentId, testId, wpm, accuracy, hesitationMs, distractionCount, speechScore) => {
     try {
       const res = await apiClient.post('/api/screenings/submit', {
@@ -301,6 +343,20 @@ export const useStore = create<NeuroStore>((set, get) => ({
       } catch (e) {
         console.error('WebSocket message parsing error', e);
       }
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket connection closed. Attempting reconnect in 5 seconds...');
+      setTimeout(() => {
+        if (localStorage.getItem('neurolearn_token')) {
+          get().connectWebSocket();
+        }
+      }, 5000);
+    };
+
+    ws.onerror = (err) => {
+      console.error('WebSocket error occurred:', err);
+      ws.close();
     };
 
     set({ wsClient: ws });

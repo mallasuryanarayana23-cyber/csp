@@ -96,6 +96,7 @@ app.get('/metrics', async (req, res) => {
 // Authentication Domain Routes
 app.post('/api/auth/register', AuthController.register);
 app.post('/api/auth/login', AuthController.login);
+app.post('/api/auth/refresh', AuthController.refresh);
 
 // Student Profiles & Analytics Routes
 app.get('/api/students', authenticateToken, StudentController.getStudents);
