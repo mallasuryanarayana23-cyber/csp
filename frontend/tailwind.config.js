@@ -9,10 +9,10 @@ export default {
     extend: {
       colors: {
         cyber: {
-          bg: '#030712',
-          card: 'rgba(17, 24, 39, 0.7)',
+          bg: '#050816',
+          card: '#0d1526',
+          secondary: '#0a0f1e',
           primary: '#6366f1', // Indigo
-          secondary: '#a855f7', // Purple
           accent: '#10b981', // Emerald
           warning: '#f59e0b', // Amber
           danger: '#ef4444', // Red
@@ -21,6 +21,8 @@ export default {
       },
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
+        heading: ['Space Grotesk', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
         dyslexic: ['OpenDyslexic', 'sans-serif'],
       },
       boxShadow: {

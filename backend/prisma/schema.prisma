@@ -1,39 +1,22 @@
 // Prisma database schema definition for NeuroLearn Platform
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 generator client {
   provider = "prisma-client-js"
 }
 
-enum Role {
-  STUDENT
-  TEACHER
-  PARENT
-  ADMIN
-}
 
-enum RiskLevel {
-  LOW
-  MEDIUM
-  HIGH
-}
-
-enum CognitiveStress {
-  LOW
-  MODERATE
-  SEVERE
-}
 
 model User {
   id            String          @id @default(uuid())
   email         String          @unique
   name          String
   passwordHash  String
-  role          Role
+  role          String
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   
@@ -78,7 +61,7 @@ model ReadingTest {
   id            String       @id @default(uuid())
   title         String
   category      String       // 'Dyslexia Screening', 'ADHD Assessment'
-  text          String       @db.Text
+  text          String       
   difficulty    String       // 'Easy', 'Medium', 'Hard'
   estimatedTime Int          // seconds
   createdAt     DateTime     @default(now())
@@ -106,16 +89,16 @@ model TestResult {
 model AIReport {
   id                       String          @id @default(uuid())
   date                     DateTime         @default(now())
-  dyslexiaRisk             RiskLevel       @default(LOW)
+  dyslexiaRisk             String       @default("LOW")
   dyslexiaProb             Int             // 0-100
-  adhdRisk                 RiskLevel       @default(LOW)
+  adhdRisk                 String       @default("LOW")
   adhdProb                 Int             // 0-100
-  cognitiveStress          CognitiveStress @default(LOW)
+  cognitiveStress          String @default("LOW")
   speechFluencyScore       Int
   typingRhythmConsistency  Int
   attentionSpanMin         Float
-  recommendations          String[]        // Array of intervention strings
-  teacherNotes             String?         @db.Text
+  recommendations          String        // JSON Array of intervention strings
+  teacherNotes             String?         
   
   // Relations
   studentId                String
@@ -167,11 +150,11 @@ model TelemetrySession {
   id               String   @id @default(uuid())
   sessionStartTime DateTime @default(now())
   sessionEndTime   DateTime?
-  gazeVectorsX     Float[]
-  gazeVectorsY     Float[]
-  blinkIntervals   Float[]
-  keyDwellTimes    Float[]
-  keyFlightTimes   Float[]
+  gazeVectorsX     String
+  gazeVectorsY     String
+  blinkIntervals   String
+  keyDwellTimes    String
+  keyFlightTimes   String
   
   // Relations
   studentId        String
@@ -185,7 +168,7 @@ model AudioRecord {
   s3Url          String?  // If stored externally
   localFilePath  String?  // If stored locally
   durationMs     Int
-  transcript     String?  @db.Text
+  transcript     String?  
   
   // Relations
   studentId      String
@@ -199,8 +182,8 @@ model ExplainabilityLog {
   aiModelVersion   String   @default("ensemble-v2.0")
   predictionType   String
   confidenceScore  Float
-  explanationText  String   @db.Text
-  featureWeights   Json?    // SHAP or tree weights
+  explanationText  String   
+  featureWeights   String?    // SHAP or tree weights
   
   // Relations
   telemetryId      String?
