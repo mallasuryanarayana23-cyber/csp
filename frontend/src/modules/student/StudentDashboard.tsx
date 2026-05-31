@@ -1,534 +1,452 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../../store/useStore';
 import { VoiceModule } from '../ai/VoiceModule';
 import { TypingModule } from '../ai/TypingModule';
 import { EyeTrackingModule } from '../ai/EyeTrackingModule';
 import { useCountUp } from '../../hooks/useCountUp';
-import { 
-  Radar, 
-  RadarChart, 
-  PolarGrid, 
-  PolarAngleAxis, 
-  PolarRadiusAxis, 
-  ResponsiveContainer, 
-  AreaChart,
-  Area,
-  XAxis, 
-  YAxis, 
-  Tooltip,
-  CartesianGrid
+import {
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer
 } from 'recharts';
-import { 
-  Award, 
-  Flame, 
-  TrendingUp, 
-  CheckCircle, 
-  BookOpen, 
-  Mic, 
-  Keyboard, 
-  Eye, 
-  Sparkles, 
-  Play, 
-  ArrowRight,
-  ChevronRight,
-  ShieldCheck,
-  BrainCircuit,
-  AlertCircle,
-  HelpCircle
+import {
+  Brain, Eye, Mic, Keyboard, Award, Flame, Sparkles, Play,
+  ArrowRight, ChevronRight, CheckCircle2, TrendingUp, AlertCircle, Zap,
+  BookOpen, Activity, Shield, Star, X, BarChart3, Target
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
+const fadeUp = (delay = 0) => ({
+  initial: { opacity: 0, y: 24 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1], delay },
+});
+
+// ─── Animated Score Ring ────────────────────────────────────────────────────
+const ScoreRing: React.FC<{ score: number; color: string; size?: number; label?: string }> = ({
+  score, color, size = 100, label
+}) => {
+  const r = (size - 12) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (score / 100) * circ;
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(26,36,72,0.8)" strokeWidth="8" />
+        <motion.circle
+          cx={size/2} cy={size/2} r={r} fill="none" stroke={color}
+          strokeWidth="8" strokeLinecap="round"
+          strokeDasharray={circ}
+          initial={{ strokeDashoffset: circ }}
+          animate={{ strokeDashoffset: offset }}
+          transition={{ duration: 1.6, ease: [0.4, 0, 0.2, 1], delay: 0.3 }}
+          style={{ filter: `drop-shadow(0 0 6px ${color}80)` }}
+        />
+      </svg>
+      {/* Centered label */}
+      <div className="text-center -mt-2">
+        <div className="text-2xl font-black font-mono-data" style={{ color }}>{score}%</div>
+        {label && <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-0.5">{label}</div>}
+      </div>
+    </div>
+  );
+};
+
+// ─── Confidence Bar ─────────────────────────────────────────────────────────
+const ConfidenceBar: React.FC<{ label: string; value: number; color: string; risk: string; riskColor: string }> = ({
+  label, value, color, risk, riskColor
+}) => (
+  <div className="space-y-2">
+    <div className="flex items-center justify-between text-xs">
+      <span className="text-slate-400 font-medium">{label}</span>
+      <div className="flex items-center gap-2">
+        <span className="font-mono-data text-slate-300 font-bold">{value}%</span>
+        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${riskColor}`}>{risk}</span>
+      </div>
+    </div>
+    <div className="progress-bar-track h-2">
+      <motion.div
+        className="progress-bar-fill h-full rounded-full"
+        style={{ background: `linear-gradient(90deg, ${color}, ${color}99)` }}
+        initial={{ width: '0%' }}
+        animate={{ width: `${value}%` }}
+        transition={{ duration: 1.2, ease: [0.4, 0, 0.2, 1], delay: 0.5 }}
+      />
+    </div>
+  </div>
+);
+
 export const StudentDashboard: React.FC = () => {
-  const { 
-    students, 
-    readingTests, 
-    aiReports, 
-    user, 
-    addNotification, 
-    fetchStudents, 
-    fetchReadingTests, 
-    fetchReports 
-  } = useStore();
-  
-  // Dynamic student & report mapping
-  const student = students.find(s => s.email === (user?.email || 'student@neurolearn.com')) || students[0];
+  const { students, readingTests, aiReports, user, addNotification, fetchStudents, fetchReadingTests, fetchReports } = useStore();
+
+  const student = students.find(s => s.email === user?.email) || students[0];
   const activeReport = aiReports.find(r => r.studentId === student?.id) || aiReports[0];
 
-  // Fetch live backend seed data on mount
-  useEffect(() => {
-    fetchStudents();
-    fetchReadingTests();
-  }, []);
+  useEffect(() => { fetchStudents(); fetchReadingTests(); }, []);
+  useEffect(() => { if (student?.id) fetchReports(student.id); }, [student?.id]);
 
-  useEffect(() => {
-    if (student?.id) {
-      fetchReports(student.id);
-    }
-  }, [student?.id]);
-
-  // Active modular testing screens state
   const [activeScreening, setActiveScreening] = useState<{ type: 'voice' | 'typing' | 'eye'; testId: string } | null>(null);
 
-  // Animated metric count-ups
-  const animatedStreak = useCountUp(student?.streakDays || 5);
-  const animatedCompletions = useCountUp(student?.completedTests?.length || 1);
   const animatedFocus = useCountUp(student?.focusScore || 92);
-  const animatedRiskProb = useCountUp(activeReport?.dyslexiaProb || 48);
+  const animatedStreak = useCountUp(student?.streakDays || 5);
 
-  // Trigger confetti for gamification milestone badges
-  const triggerConfetti = (badgeName: string) => {
-    confetti({
-      particleCount: 120,
-      spread: 70,
-      origin: { y: 0.6 },
-      colors: ['#6366f1', '#a855f7', '#10b981', '#06b6d4']
-    });
-    
-    addNotification(
-      'Milestone Celebration!',
-      `You interacted with your "${badgeName}" badge! Keep up the spectacular cognitive practice.`,
-      'success'
-    );
+  const triggerConfetti = (name: string) => {
+    confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 }, colors: ['#3b82f6', '#8b5cf6', '#22d3ee'] });
+    addNotification('🏆 Badge Unlocked!', `You earned "${name}"`, 'success');
   };
 
-  // Recharts Radar chart mapper for cognitive profiling
+  // Radar data
   const radarData = [
-    { subject: 'Visual Pacing', value: student && (student as any).metricsHistory ? (student as any).metricsHistory[(student as any).metricsHistory.length - 1]?.readingSpeed || 74 : 74, fullMark: 100 },
-    { subject: 'Attention Span', value: student?.focusScore || 92, fullMark: 100 },
-    { subject: 'Typing Rhythm', value: activeReport?.typingRhythmConsistency || 74, fullMark: 100 },
-    { subject: 'Speech Fluency', value: activeReport?.speechFluencyScore || 82, fullMark: 100 },
-    { subject: 'Focus Balance', value: student && (student as any).metricsHistory ? Math.round(100 - ((student as any).metricsHistory[(student as any).metricsHistory.length - 1]?.distractionEvents * 6)) : 88, fullMark: 100 },
+    { subject: 'Focus', A: activeReport?.attentionSpanMin ? Math.min(100, activeReport.attentionSpanMin * 7) : 88 },
+    { subject: 'Speech', A: activeReport?.speechFluencyScore || 92 },
+    { subject: 'Typing', A: activeReport?.typingRhythmConsistency || 85 },
+    { subject: 'Gaze', A: activeReport?.dyslexiaProb ? 100 - activeReport.dyslexiaProb : 88 },
+    { subject: 'Memory', A: 78 },
+    { subject: 'Pace', A: 82 },
   ];
 
-  // Recharts WPM trend longitudinal area chart mapper
-  const trendData = student && (student as any).metricsHistory ? (student as any).metricsHistory.map((metric: any) => ({
-    name: metric.date,
-    WPM: metric.wpm || 70,
-    Focus: metric.focusScore || 85
-  })) : [
-    { name: 'Mon', WPM: 64, Focus: 82 },
-    { name: 'Tue', WPM: 70, Focus: 85 },
-    { name: 'Wed', WPM: 72, Focus: 88 },
-    { name: 'Thu', WPM: 78, Focus: 92 },
-    { name: 'Fri', WPM: 82, Focus: 94 }
+  // Timeline data
+  const timeline = student?.metricsHistory || [
+    { date: 'Mon', focusScore: 80, wpm: 68, readingSpeed: 68 },
+    { date: 'Tue', focusScore: 83, wpm: 72, readingSpeed: 72 },
+    { date: 'Wed', focusScore: 87, wpm: 75, readingSpeed: 75 },
+    { date: 'Thu', focusScore: 85, wpm: 78, readingSpeed: 78 },
+    { date: 'Fri', focusScore: 91, wpm: 82, readingSpeed: 82 },
+    { date: 'Sat', focusScore: 94, wpm: 86, readingSpeed: 86 },
   ];
 
-  // Try Exercise trigger from recommendations
-  const handleTryExercise = (recText: string) => {
-    let testType: 'typing' | 'eye' | 'voice' = 'typing';
-    
-    if (recText.toLowerCase().includes('spacing') || recText.toLowerCase().includes('dyslexia') || recText.toLowerCase().includes('typing')) {
-      testType = 'typing';
-    } else if (recText.toLowerCase().includes('calibration') || recText.toLowerCase().includes('focus') || recText.toLowerCase().includes('gaze') || recText.toLowerCase().includes('adhd')) {
-      testType = 'eye';
-    } else {
-      testType = 'voice';
-    }
-
-    // Find the first assigned test of that category
-    const categoryName = testType === 'typing' ? 'Dyslexia Screening' : testType === 'eye' ? 'ADHD Assessment' : 'General Reading';
-    const match = readingTests.find(t => t.category === categoryName) || readingTests[0];
-
-    if (match) {
-      setActiveScreening({ type: testType, testId: match.id });
-      addNotification(
-        'Exercise Launched',
-        `Launching recommendations workout: "${match.title}"`,
-        'info'
-      );
-    }
-  };
+  const modalityCards = [
+    { type: 'voice' as const, icon: Mic, label: 'Voice Analysis', subtitle: 'Whisper Speech NLP', color: '#8b5cf6', bg: 'bg-violet-500/10', border: 'border-violet-500/20', desc: 'Record yourself reading aloud. AI analyzes phoneme hesitations and speech fluency in real-time.' },
+    { type: 'typing' as const, icon: Keyboard, label: 'Keystroke Dynamics', subtitle: 'Typing Rhythm AI', color: '#10b981', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', desc: 'Type a structured passage. Microsecond analysis of dwell times and letter confusion patterns.' },
+    { type: 'eye' as const, icon: Eye, label: 'Eye Tracking', subtitle: 'MediaPipe Gaze AI', color: '#22d3ee', bg: 'bg-cyan-500/10', border: 'border-cyan-500/20', desc: 'Enable webcam. AI maps your gaze deviation and blink patterns against reading passages.' },
+  ];
 
   if (activeScreening) {
+    const card = modalityCards.find(c => c.type === activeScreening.type)!;
     return (
-      <div className="space-y-6 max-w-4xl mx-auto py-4 px-4">
-        {/* Floating return trigger */}
-        <button
-          onClick={() => setActiveScreening(null)}
-          className="px-4 py-2 text-xs font-semibold rounded-lg bg-slate-900/60 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-indigo-500/10 cursor-pointer transition-colors"
-        >
-          ← Return to Student Cockpit
-        </button>
-
-        {activeScreening.type === 'voice' && (
-          <VoiceModule testId={activeScreening.testId} onComplete={() => setActiveScreening(null)} />
-        )}
-        {activeScreening.type === 'typing' && (
-          <TypingModule testId={activeScreening.testId} onComplete={() => setActiveScreening(null)} />
-        )}
-        {activeScreening.type === 'eye' && (
-          <EyeTrackingModule testId={activeScreening.testId} onComplete={() => setActiveScreening(null)} />
-        )}
+      <div className="min-h-screen aurora-bg p-6">
+        <div className="max-w-3xl mx-auto">
+          <button
+            onClick={() => setActiveScreening(null)}
+            className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-200 mb-6 transition-colors"
+          >
+            ← Back to Dashboard
+          </button>
+          {activeScreening.type === 'voice' && <VoiceModule testId={activeScreening.testId} onComplete={() => setActiveScreening(null)} />}
+          {activeScreening.type === 'typing' && <TypingModule testId={activeScreening.testId} onComplete={() => setActiveScreening(null)} />}
+          {activeScreening.type === 'eye' && <EyeTrackingModule testId={activeScreening.testId} onComplete={() => setActiveScreening(null)} />}
+        </div>
       </div>
     );
   }
-
-  if (!student) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[400px]">
-        <div className="w-12 h-12 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
-        <p className="text-slate-400 text-sm mt-4 font-light">Loading cognitive cockpit telemetry...</p>
-      </div>
-    );
-  }
-
-  // Get active risk tier colors
-  const getRiskColor = (tier: string) => {
-    if (tier === 'HIGH') return 'text-rose-400 bg-rose-500/10 border-rose-500/25';
-    if (tier === 'MEDIUM') return 'text-amber-400 bg-amber-500/10 border-amber-500/25';
-    return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25';
-  };
 
   return (
-    <div className="grid lg:grid-cols-12 gap-6 p-4 max-w-7xl mx-auto font-sans text-left relative">
-      
-      {/* Decorative Gradient Orbs */}
-      <div className="gradient-orb w-96 h-96 bg-indigo-500 top-10 left-10" />
-      <div className="gradient-orb w-[400px] h-[400px] bg-purple-500 bottom-10 right-10" />
+    <div className="min-h-screen aurora-bg pb-20">
+      {/* ── Background ── */}
+      <div className="gradient-orb gradient-orb-blue w-96 h-96 top-0 right-0 opacity-10" />
+      <div className="gradient-orb gradient-orb-violet w-80 h-80 bottom-1/3 left-0 opacity-8" />
 
-      {/* Welcome Header Banner */}
-      <div className="lg:col-span-12 flex flex-col md:flex-row md:items-center justify-between gap-6 bg-gradient-to-r from-indigo-950/20 via-slate-900/40 to-cyan-950/15 p-6 sm:p-8 rounded-3xl border border-indigo-500/10 relative overflow-hidden backdrop-blur-md">
-        <div className="space-y-2 relative z-10">
-          <div className="flex items-center space-x-2">
-            <span className="text-[10px] bg-indigo-500/15 text-indigo-300 border border-indigo-500/20 font-bold px-2.5 py-0.5 rounded-full uppercase tracking-widest font-space">
-              Student Diagnostic Cockpit
-            </span>
-            <span className="text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/20 font-bold px-2.5 py-0.5 rounded-full uppercase tracking-widest font-space">
-              Active Session
-            </span>
-          </div>
-          <h2 className="text-3xl font-space font-extrabold tracking-tight">
-            Welcome back, <span className="bg-gradient-to-r from-indigo-300 to-purple-300 bg-clip-text text-transparent">{student.name}</span>!
-          </h2>
-          <p className="text-xs text-slate-400 font-light">
-            Your reading metrics and neural focus scores were last refreshed on <span className="text-slate-200 font-semibold">{student.lastTested ? new Date(student.lastTested).toLocaleDateString() : 'Yesterday'}</span>.
-          </p>
-        </div>
+      <div className="max-w-7xl mx-auto px-4 md:px-6 space-y-6 relative z-10">
 
-        {/* Dynamic Metric Count-up Pill Roster */}
-        <div className="flex flex-wrap items-center gap-6 relative z-10 pr-2">
-          {/* Streak */}
-          <div className="flex items-center space-x-3">
-            <div className="w-11 h-11 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-400 shadow-md">
-              <Flame className="w-5.5 h-5.5 animate-pulse" />
-            </div>
-            <div>
-              <span className="text-[9px] text-slate-500 block uppercase font-bold tracking-wider">Practice Streak</span>
-              <span className="text-xl font-extrabold text-orange-400 font-space leading-none block mt-1">{animatedStreak} Days</span>
-            </div>
-          </div>
+        {/* ══ HERO GREETING BANNER ══════════════════════ */}
+        <motion.div {...fadeUp(0)} className="neo-card rounded-3xl p-6 md:p-8 relative overflow-hidden">
+          {/* Background glow */}
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/6 via-transparent to-violet-500/5 pointer-events-none" />
+          <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-blue-500/5 blur-3xl pointer-events-none" />
 
-          {/* Complete */}
-          <div className="flex items-center space-x-3 pl-0 sm:pl-6 border-l border-white/0 sm:border-indigo-500/15">
-            <div className="w-11 h-11 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shadow-md">
-              <CheckCircle className="w-5.5 h-5.5" />
-            </div>
-            <div>
-              <span className="text-[9px] text-slate-500 block uppercase font-bold tracking-wider">Screenings</span>
-              <span className="text-xl font-extrabold text-emerald-400 font-space leading-none block mt-1">{animatedCompletions} Finished</span>
-            </div>
-          </div>
-
-          {/* Focus Score */}
-          <div className="flex items-center space-x-3 pl-0 sm:pl-6 border-l border-white/0 sm:border-indigo-500/15">
-            <div className="w-11 h-11 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shadow-md">
-              <BrainCircuit className="w-5.5 h-5.5" />
-            </div>
-            <div>
-              <span className="text-[9px] text-slate-500 block uppercase font-bold tracking-wider">Focus Rating</span>
-              <span className="text-xl font-extrabold text-cyan-400 font-space leading-none block mt-1">{animatedFocus}%</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* LEFT COLUMN: Cognitive Radar, Longitudinal Trends, Assigned Exercises */}
-      <div className="lg:col-span-8 space-y-6">
-        
-        {/* Radar Matrix & Trend Line Grid */}
-        <div className="grid md:grid-cols-2 gap-6">
-          
-          {/* 1. Recharts Radar chart profile card */}
-          <div className="glass-panel rounded-3xl p-6 flex flex-col justify-between">
-            <div>
-              <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest font-space block mb-0.5">Sensory Topology Mapping</span>
-              <h3 className="text-base font-bold flex items-center space-x-2">
-                <BrainCircuit className="w-4.5 h-4.5 text-indigo-400" />
-                <span>Cognitive Radar Profile</span>
-              </h3>
-            </div>
-            
-            <div className="h-56 w-full mt-4 flex items-center justify-center">
-              <ResponsiveContainer width="100%" height="100%">
-                <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
-                  <PolarGrid stroke="rgba(99, 102, 241, 0.1)" />
-                  <PolarAngleAxis dataKey="subject" stroke="#94a3b8" fontSize={9} fontWeight={700} />
-                  <PolarRadiusAxis angle={30} domain={[0, 100]} stroke="rgba(255, 255, 255, 0.05)" />
-                  <Radar 
-                    name={student.name} 
-                    dataKey="value" 
-                    stroke="#8b5cf6" 
-                    fill="url(#radarGradient)" 
-                    fillOpacity={0.35} 
-                  />
-                  <defs>
-                    <linearGradient id="radarGradient" x1="0" y1="0" x2="1" y2="1">
-                      <stop offset="0%" stopColor="#6366f1" />
-                      <stop offset="100%" stopColor="#06b6d4" />
-                    </linearGradient>
-                  </defs>
-                </RadarChart>
-              </ResponsiveContainer>
-            </div>
-            
-            <div className="text-[10px] text-slate-500 text-center border-t border-indigo-500/5 pt-3.5 select-none font-medium">
-              💡 Area expansion denotes high focus balance & rhythm.
-            </div>
-          </div>
-
-          {/* 2. Recharts WPM trend line card */}
-          <div className="glass-panel rounded-3xl p-6 flex flex-col justify-between">
-            <div>
-              <span className="text-[10px] text-purple-400 font-bold uppercase tracking-widest font-space block mb-0.5">Longitudinal Development</span>
-              <h3 className="text-base font-bold flex items-center space-x-2">
-                <TrendingUp className="w-4.5 h-4.5 text-purple-400" />
-                <span>Reading Pacing Velocity</span>
-              </h3>
-            </div>
-
-            <div className="h-56 w-full mt-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="wpmGlow" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="focusGlow" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.15} />
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.03)" />
-                  <XAxis dataKey="name" stroke="#475569" fontSize={9} fontWeight={600} />
-                  <YAxis stroke="#475569" fontSize={9} fontWeight={600} domain={[30, 100]} />
-                  <Tooltip 
-                    contentStyle={{ background: '#0d1526', border: '1px solid rgba(99, 102, 241, 0.15)', borderRadius: '12px', textAlign: 'left' }}
-                    labelStyle={{ color: '#94a3b8', fontSize: '10px', fontWeight: 'bold' }}
-                    itemStyle={{ fontSize: '11px' }}
-                  />
-                  <Area type="monotone" dataKey="WPM" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#wpmGlow)" name="WPM Speed" />
-                  <Area type="monotone" dataKey="Focus" stroke="#6366f1" strokeWidth={2} strokeDasharray="3 3" fillOpacity={1} fill="url(#focusGlow)" name="Focus Level" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="text-[10px] text-slate-400 text-center border-t border-indigo-500/5 pt-3.5 select-none flex justify-center space-x-4">
-              <span className="flex items-center space-x-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 block" />
-                <span>WPM Pace (Words/Min)</span>
-              </span>
-              <span className="flex items-center space-x-1.5">
-                <span className="w-2.5 h-1 border-t-2 border-dashed border-indigo-500 block" />
-                <span>Focus Span Rating</span>
-              </span>
-            </div>
-          </div>
-
-        </div>
-
-        {/* 3. Assignable active testing tasks lists */}
-        <div className="glass-panel rounded-3xl p-6 space-y-5">
-          <div>
-            <h3 className="text-lg font-space font-extrabold">Assigned Screening Exercises</h3>
-            <p className="text-xs text-slate-400 font-light">Select and launch a sensory screening task assigned by your educator.</p>
-          </div>
-          
-          <div className="space-y-3">
-            {readingTests.length === 0 ? (
-              <p className="text-xs text-slate-500 py-6 text-center">No tests currently populated.</p>
-            ) : (
-              readingTests.map((test) => {
-                const isVoice = test.category.toLowerCase().includes('voice') || test.category.toLowerCase().includes('reading') || test.category.toLowerCase().includes('general');
-                const isTyping = test.category.toLowerCase().includes('dyslexia') || test.category.toLowerCase().includes('typing');
-                const isEye = test.category.toLowerCase().includes('adhd') || test.category.toLowerCase().includes('gaze') || test.category.toLowerCase().includes('eye');
-
-                return (
-                  <div 
-                    key={test.id}
-                    className="p-4 rounded-2xl bg-slate-950/40 hover:bg-slate-950 border border-slate-900 hover:border-indigo-500/15 transition-all duration-300 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
-                  >
-                    <div className="flex items-start space-x-3.5">
-                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xs flex-shrink-0 transition-transform group-hover:scale-105 duration-300 ${
-                        isTyping 
-                          ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' 
-                          : isVoice 
-                            ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' 
-                            : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
-                      }`}>
-                        {isTyping ? <Keyboard className="w-5.5 h-5.5" /> : isVoice ? <Mic className="w-5.5 h-5.5" /> : <Eye className="w-5.5 h-5.5" />}
-                      </div>
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <span className="text-[9px] text-slate-500 uppercase tracking-widest font-extrabold">{test.category}</span>
-                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
-                            test.difficulty === 'Easy' 
-                              ? 'text-emerald-400 bg-emerald-500/5 border-emerald-500/15'
-                              : test.difficulty === 'Medium'
-                                ? 'text-amber-400 bg-amber-500/5 border-amber-500/15'
-                                : 'text-rose-400 bg-rose-500/5 border-rose-500/15'
-                          }`}>
-                            {test.difficulty}
-                          </span>
-                          <span className="text-[9px] text-slate-500">🕒 {test.estimatedTime}s</span>
-                        </div>
-                        <h4 className="text-sm font-bold text-slate-200 mt-1">{test.title}</h4>
-                        <p className="text-[11px] text-slate-400 max-w-[480px] font-light leading-relaxed mt-1 block">
-                          {test.text}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <button
-                      onClick={() => setActiveScreening({
-                        type: isTyping ? 'typing' : isVoice ? 'voice' : 'eye',
-                        testId: test.id
-                      })}
-                      className="px-5 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 font-bold text-xs text-white hover:scale-102 flex items-center justify-center space-x-2 cursor-pointer shadow-lg shadow-indigo-600/10 transition-all shrink-0 group-hover:shadow-indigo-600/20"
-                    >
-                      <span>Launch Workout</span>
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                    </button>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-      </div>
-
-      {/* RIGHT COLUMN: Unlocked Milestones, Risk gauges, AI Recommendations */}
-      <div className="lg:col-span-4 space-y-6">
-        
-        {/* Risk profile widget */}
-        <div className="glass-panel rounded-3xl p-5 border border-indigo-500/10 space-y-4">
-          <div className="border-b border-indigo-500/10 pb-3">
-            <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest font-space block mb-0.5">Telemetry Diagnostic Insights</span>
-            <h3 className="text-base font-bold flex items-center space-x-1.5">
-              <ShieldCheck className="w-4.5 h-4.5 text-indigo-400" />
-              <span>Dyslexia Risk Quotient</span>
-            </h3>
-          </div>
-          
-          <div className="flex flex-col items-center justify-center text-center p-3 rounded-2xl bg-slate-950/40 border border-slate-900 relative">
-            <span className={`absolute top-3 right-3 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full border ${getRiskColor(activeReport?.dyslexiaRisk || 'MEDIUM')}`}>
-              {activeReport?.dyslexiaRisk || 'MEDIUM'} RISK
-            </span>
-            
-            <div className="relative w-28 h-28 flex items-center justify-center mt-3">
-              {/* Circular border glow */}
-              <div className="absolute inset-0 rounded-full border-4 border-indigo-500/5" />
-              <div className="absolute inset-0 rounded-full border-4 border-t-indigo-500 border-r-indigo-500 border-l-indigo-500/20 border-b-indigo-500/10 animate-spin pointer-events-none" style={{ animationDuration: '4s' }} />
-              <div>
-                <span className="text-2xl font-space font-extrabold text-slate-100">{animatedRiskProb}%</span>
-                <span className="text-[9px] text-slate-500 block uppercase font-bold tracking-wider mt-0.5">Quotient</span>
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-xs text-emerald-400 font-semibold tracking-wider uppercase">AI Engine Active</span>
+              </div>
+              <h1 className="font-display text-3xl md:text-4xl font-black text-white">
+                Good morning, <span className="gradient-text-blue">{student?.name?.split(' ')[0] || 'Student'}.</span>
+              </h1>
+              <p className="text-slate-400 text-base max-w-lg">
+                Your cognitive performance is tracking <span className="text-emerald-400 font-semibold">well above baseline</span>. Three modalities ready for screening.
+              </p>
+              <div className="flex flex-wrap gap-3 pt-1">
+                <div className="flex items-center gap-1.5 text-xs text-slate-400 bg-cosmos-700/50 px-3 py-1.5 rounded-full border border-cosmos-500">
+                  <Flame className="w-3.5 h-3.5 text-orange-400" /> {animatedStreak}-Day Streak
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-slate-400 bg-cosmos-700/50 px-3 py-1.5 rounded-full border border-cosmos-500">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> {student?.completedTests?.length || 1} Tests Complete
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-slate-400 bg-cosmos-700/50 px-3 py-1.5 rounded-full border border-cosmos-500">
+                  <BookOpen className="w-3.5 h-3.5 text-blue-400" /> {student?.grade || 'Grade 4'}
+                </div>
               </div>
             </div>
-            
-            <p className="text-[11px] text-slate-400 leading-normal font-light mt-4 max-w-[240px]">
-              Mild hesitation delays found in phonology. OpenDyslexic spacing aids recommended.
-            </p>
+
+            {/* Focus Score Ring */}
+            <div className="flex items-center gap-6">
+              <div className="text-center space-y-1">
+                <div className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Focus Score</div>
+                <div className="relative">
+                  <svg width="100" height="100" viewBox="0 0 100 100" className="-rotate-90">
+                    <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(26,36,72,0.8)" strokeWidth="8" />
+                    <motion.circle cx="50" cy="50" r="42" fill="none" stroke="#3b82f6"
+                      strokeWidth="8" strokeLinecap="round"
+                      strokeDasharray={263.9}
+                      initial={{ strokeDashoffset: 263.9 }}
+                      animate={{ strokeDashoffset: 263.9 - (animatedFocus / 100) * 263.9 }}
+                      transition={{ duration: 1.6, ease: [0.4, 0, 0.2, 1], delay: 0.4 }}
+                      style={{ filter: 'drop-shadow(0 0 8px #3b82f680)' }}
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center rotate-90">
+                    <div className="text-center">
+                      <div className="text-xl font-black font-mono-data text-blue-400">{animatedFocus}</div>
+                      <div className="text-[8px] text-slate-600 uppercase">%</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {[
+                  { label: 'Dyslexia Risk', val: `${activeReport?.dyslexiaProb || 15}%`, color: 'text-emerald-400', risk: activeReport?.dyslexiaRisk || 'LOW' },
+                  { label: 'ADHD Marker', val: `${activeReport?.adhdProb || 12}%`, color: 'text-emerald-400', risk: activeReport?.adhdRisk || 'LOW' },
+                  { label: 'Cog. Stress', val: activeReport?.cognitiveStress || 'LOW', color: 'text-emerald-400', risk: '' },
+                ].map(m => (
+                  <div key={m.label} className="flex items-center justify-between gap-4 text-xs">
+                    <span className="text-slate-500">{m.label}</span>
+                    <span className={`font-bold font-mono-data ${m.color}`}>{m.val}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
-        
-        {/* 1. Gamified Achievement Badge Deck */}
-        <div className="glass-panel rounded-3xl p-5 border border-indigo-500/10 space-y-4">
-          <div>
-            <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest font-space block mb-0.5">Gamified Milestones</span>
-            <h3 className="text-base font-bold flex items-center space-x-2">
-              <Award className="w-4.5 h-4.5 text-emerald-400" />
-              <span>Unlocked Achievement Badges</span>
-            </h3>
+        </motion.div>
+
+        {/* ══ MAIN GRID ════════════════════════════════ */}
+        <div className="grid lg:grid-cols-12 gap-6">
+
+          {/* LEFT — Radar + Timeline */}
+          <div className="lg:col-span-8 space-y-6">
+
+            {/* Cognitive Radar */}
+            <motion.div {...fadeUp(0.05)} className="neo-card rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <div className="text-[10px] text-blue-400 uppercase tracking-widest font-bold mb-0.5">Multi-Modal Profile</div>
+                  <h3 className="font-display font-bold text-lg">Cognitive Radar Analysis</h3>
+                </div>
+                <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full font-bold">
+                  <Activity className="w-3 h-3" /> Live
+                </div>
+              </div>
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="75%">
+                    <PolarGrid stroke="rgba(26,36,72,0.8)" />
+                    <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }} />
+                    <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
+                    <Radar name="Score" dataKey="A" stroke="#3b82f6" strokeWidth={2}
+                      fill="#3b82f6" fillOpacity={0.12} dot={{ fill: '#3b82f6', strokeWidth: 0, r: 4 }} />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+            </motion.div>
+
+            {/* Performance Timeline */}
+            <motion.div {...fadeUp(0.1)} className="neo-card rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <div className="text-[10px] text-violet-400 uppercase tracking-widest font-bold mb-0.5">7-Day Trend</div>
+                  <h3 className="font-display font-bold text-lg">Learning Performance Timeline</h3>
+                </div>
+                <div className="flex items-center gap-3 text-[10px] text-slate-500">
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> Focus</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-violet-500 inline-block" /> WPM</span>
+                </div>
+              </div>
+              <div className="h-48">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={timeline} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="focusGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="wpmGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(26,36,72,0.6)" />
+                    <XAxis dataKey="date" stroke="#475569" fontSize={10} fontWeight={600} />
+                    <YAxis stroke="#475569" fontSize={10} domain={[50, 100]} />
+                    <Tooltip
+                      contentStyle={{ background: '#0c1228', border: '1px solid rgba(59,130,246,0.15)', borderRadius: '12px', fontSize: '11px' }}
+                      labelStyle={{ color: '#94a3b8', fontWeight: 600 }}
+                    />
+                    <Area type="monotone" dataKey="focusScore" stroke="#3b82f6" strokeWidth={2.5} fill="url(#focusGrad)" name="Focus %" />
+                    <Area type="monotone" dataKey="wpm" stroke="#8b5cf6" strokeWidth={2} strokeDasharray="4 4" fill="url(#wpmGrad)" name="WPM" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </motion.div>
+
+            {/* AI Screening Lab */}
+            <motion.div {...fadeUp(0.15)} className="neo-card rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <div className="text-[10px] text-cyan-400 uppercase tracking-widest font-bold mb-0.5">AI Lab</div>
+                  <h3 className="font-display font-bold text-lg">Screening Modules</h3>
+                </div>
+                <span className="text-[10px] text-slate-500 bg-cosmos-700 px-2 py-1 rounded-lg border border-cosmos-500">
+                  {readingTests.length} Tests Available
+                </span>
+              </div>
+              <div className="grid sm:grid-cols-3 gap-4">
+                {modalityCards.map(({ type, icon: Icon, label, subtitle, color, bg, border, desc }) => (
+                  <motion.div
+                    key={type}
+                    className={`relative rounded-2xl p-5 ${bg} border ${border} cursor-pointer group overflow-hidden`}
+                    whileHover={{ y: -3, transition: { duration: 0.2 } }}
+                    onClick={() => setActiveScreening({ type, testId: readingTests[0]?.id || 'test-1' })}
+                  >
+                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      style={{ background: `radial-gradient(circle at 50% 0%, ${color}15, transparent 70%)` }} />
+                    <div className="relative z-10 space-y-3">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${color}18`, border: `1px solid ${color}30` }}>
+                        <Icon className="w-5 h-5" style={{ color }} />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-sm text-slate-200">{label}</h4>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{subtitle}</p>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">{desc}</p>
+                      <div className="flex items-center gap-1 text-[11px] font-bold" style={{ color }}>
+                        Begin Test <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            {student.badges && student.badges.length > 0 ? (
-              student.badges.map((badge) => {
-                let badgeEmoji = '🏆';
-                if (badge.icon === 'keyboard') badgeEmoji = '⌨';
-                if (badge.icon === 'zap') badgeEmoji = '⚡';
-                if (badge.icon === 'award') badgeEmoji = '🏅';
-                return (
-                  <div 
+          {/* RIGHT — Report + Badges + Recommendations */}
+          <div className="lg:col-span-4 space-y-6">
+
+            {/* AI Risk Report Card */}
+            <motion.div {...fadeUp(0.08)} className="neo-card rounded-3xl p-5 space-y-4">
+              <div>
+                <div className="text-[10px] text-violet-400 uppercase tracking-widest font-bold mb-0.5">Latest Report</div>
+                <h3 className="font-display font-bold text-base">AI Risk Profile</h3>
+                <p className="text-[10px] text-slate-500 mt-0.5">{activeReport?.date || 'May 30, 2026'}</p>
+              </div>
+
+              <div className="space-y-3 pt-1">
+                <ConfidenceBar
+                  label="Dyslexia Risk"
+                  value={activeReport?.dyslexiaProb || 15}
+                  color="#3b82f6"
+                  risk={activeReport?.dyslexiaRisk || 'LOW'}
+                  riskColor="risk-badge-low"
+                />
+                <ConfidenceBar
+                  label="ADHD Markers"
+                  value={activeReport?.adhdProb || 12}
+                  color="#8b5cf6"
+                  risk={activeReport?.adhdRisk || 'LOW'}
+                  riskColor="risk-badge-low"
+                />
+                <ConfidenceBar
+                  label="Speech Fluency"
+                  value={activeReport?.speechFluencyScore || 92}
+                  color="#22d3ee"
+                  risk="HIGH"
+                  riskColor="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                />
+                <ConfidenceBar
+                  label="Typing Rhythm"
+                  value={activeReport?.typingRhythmConsistency || 88}
+                  color="#10b981"
+                  risk="STRONG"
+                  riskColor="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                />
+              </div>
+
+              {activeReport?.recommendations && activeReport.recommendations.length > 0 && (
+                <div className="pt-2 border-t border-cosmos-600">
+                  <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-2">AI Recommendations</p>
+                  <div className="space-y-1.5">
+                    {activeReport.recommendations.slice(0, 3).map((r, i) => (
+                      <div key={i} className="flex items-start gap-2 text-[11px] text-slate-300">
+                        <Sparkles className="w-3 h-3 text-blue-400 flex-shrink-0 mt-0.5" />
+                        <span>{r}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </motion.div>
+
+            {/* Achievement Badges */}
+            <motion.div {...fadeUp(0.12)} className="neo-card rounded-3xl p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] text-amber-400 uppercase tracking-widest font-bold mb-0.5">Achievements</div>
+                  <h3 className="font-display font-bold text-base">Badge Galaxy</h3>
+                </div>
+                <Star className="w-4 h-4 text-amber-400 fill-current" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {(student?.badges || [
+                  { id: 'b1', name: 'Focus Champion', icon: '🏆', date: 'May 28' },
+                  { id: 'b2', name: 'Speech Master', icon: '🎙', date: 'May 29' },
+                ]).map(badge => (
+                  <motion.button
                     key={badge.id}
                     onClick={() => triggerConfetti(badge.name)}
-                    className="p-4 bg-slate-950/40 hover:bg-slate-900 border border-slate-900 hover:border-indigo-500/20 rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer group transition-all duration-300 relative overflow-hidden"
-                    title="Click to celebrate badge milestone!"
+                    className="flex items-center gap-2.5 p-2.5 rounded-xl bg-cosmos-700/40 border border-cosmos-500 hover:border-amber-500/30 hover:bg-amber-500/5 transition-all text-left"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                   >
-                    <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/0 to-indigo-500/2 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    <span className="text-3xl block group-hover:scale-110 duration-300 transition-transform transform-gpu">{badgeEmoji}</span>
-                    <span className="text-xs font-bold text-slate-200 mt-2.5 block truncate w-full">{badge.name}</span>
-                    <span className="text-[9px] text-slate-500 mt-1">{badge.date ? new Date(badge.date).toLocaleDateString() : 'May 30'}</span>
+                    <span className="text-xl">{badge.icon}</span>
+                    <div>
+                      <p className="text-[11px] font-semibold text-slate-200 leading-tight">{badge.name}</p>
+                      <p className="text-[9px] text-slate-600 mt-0.5">{badge.date}</p>
+                    </div>
+                  </motion.button>
+                ))}
+                {/* Locked badges */}
+                {[{ name: 'Eye Master', icon: '👁' }, { name: 'Speed Typer', icon: '⌨' }].map(b => (
+                  <div key={b.name} className="flex items-center gap-2.5 p-2.5 rounded-xl bg-cosmos-800/30 border border-cosmos-700 opacity-40">
+                    <span className="text-xl grayscale">{b.icon}</span>
+                    <div>
+                      <p className="text-[11px] font-semibold text-slate-400 leading-tight">{b.name}</p>
+                      <p className="text-[9px] text-slate-600">Locked</p>
+                    </div>
                   </div>
-                );
-              })
-            ) : (
-              <p className="text-xs text-slate-500 col-span-2 text-center py-4">No badges unlocked yet.</p>
-            )}
-          </div>
-        </div>
+                ))}
+              </div>
+            </motion.div>
 
-        {/* 2. AI Recommendation Deck with Try Exercise Trigger */}
-        <div className="glass-panel rounded-3xl p-5 border border-indigo-500/10 space-y-4">
-          <div className="border-b border-indigo-500/10 pb-3">
-            <span className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest font-space block mb-0.5">Adaptive Guidance</span>
-            <h3 className="text-base font-bold flex items-center space-x-2">
-              <Sparkles className="w-4.5 h-4.5 text-cyan-400" />
-              <span>AI Study Recommendations</span>
-            </h3>
-          </div>
-
-          <div className="space-y-3">
-            {activeReport?.recommendations ? (
-              (typeof activeReport.recommendations === 'string' ? JSON.parse(activeReport.recommendations) : activeReport.recommendations).map((rec: string, index: number) => (
-                <div 
-                  key={index}
-                  className="p-3.5 bg-slate-950/40 rounded-2xl border border-slate-900 hover:border-indigo-500/15 text-xs text-slate-300 leading-relaxed font-light flex flex-col space-y-2.5"
-                >
-                  <div className="flex items-start space-x-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0 mt-1.5 animate-pulse" />
-                    <span>{rec}</span>
+            {/* Quick Stats */}
+            <motion.div {...fadeUp(0.16)} className="neo-card rounded-3xl p-5 space-y-3">
+              <div className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Quick Stats</div>
+              {[
+                { icon: Target, label: 'Attention Span', val: `${activeReport?.attentionSpanMin || 15} min`, color: 'text-blue-400' },
+                { icon: Brain, label: 'Cognitive Stress', val: activeReport?.cognitiveStress || 'LOW', color: 'text-emerald-400' },
+                { icon: Zap, label: 'Last Screened', val: student?.lastTested || 'Yesterday', color: 'text-violet-400' },
+              ].map(({ icon: Icon, label, val, color }) => (
+                <div key={label} className="flex items-center justify-between py-2 border-b border-cosmos-700 last:border-0">
+                  <div className="flex items-center gap-2.5">
+                    <Icon className={`w-4 h-4 ${color}`} />
+                    <span className="text-xs text-slate-400">{label}</span>
                   </div>
-                  
-                  <button
-                    onClick={() => handleTryExercise(rec)}
-                    className="self-end px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/25 hover:border-indigo-500/40 text-[10px] font-bold uppercase tracking-wider text-indigo-300 rounded-lg flex items-center space-x-1 cursor-pointer transition-all active:scale-98"
-                  >
-                    <span>Train Recommendation</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </button>
+                  <span className={`text-xs font-bold font-mono-data ${color}`}>{val}</span>
                 </div>
-              ))
-            ) : (
-              <p className="text-xs text-slate-500 text-center py-4">No suggestions currently available.</p>
-            )}
+              ))}
+            </motion.div>
           </div>
         </div>
-
-        {/* 3. Safety Notice Box */}
-        <div className="p-4.5 rounded-2xl bg-slate-950/40 border border-yellow-500/10 text-slate-400 text-[10px] leading-relaxed font-sans space-y-1.5">
-          <span className="text-yellow-500/80 font-bold block flex items-center gap-1.5">
-            <AlertCircle className="w-3.5 h-3.5" />
-            <span>MEDICAL DISCLAIMER</span>
-          </span>
-          <p>
-            This cockpit provides AI-assisted educational screening diagnostics only. All metrics are designed for classroom curriculum tracking, not clinical evaluations.
-          </p>
-        </div>
-
       </div>
-
     </div>
   );
 };

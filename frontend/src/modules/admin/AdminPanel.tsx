@@ -1,26 +1,19 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { useStore } from '../../store/useStore';
-import { 
-  Settings, 
-  Activity, 
-  Database, 
-  ShieldCheck, 
-  TrendingUp, 
-  FileText,
-  UserCheck,
-  ServerCrash,
-  Search,
-  Trash2,
-  Cpu,
-  Wifi,
-  Terminal,
-  RefreshCw,
-  AlertTriangle,
-  Lock,
-  Globe
+import {
+  Settings, Activity, Database, ShieldCheck, TrendingUp,
+  UserCheck, ServerCrash, Search, Trash2, Cpu, Wifi,
+  Terminal, RefreshCw, AlertTriangle, Lock, Globe, Zap
 } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { apiClient } from '../../services/api/client';
+
+const fadeUp = (delay = 0) => ({
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1], delay },
+});
 
 export const AdminPanel: React.FC = () => {
   const { addNotification, user } = useStore();
@@ -34,345 +27,237 @@ export const AdminPanel: React.FC = () => {
   const fetchAdminData = async () => {
     setLoading(true);
     try {
-      const [logsRes, usersRes, healthRes] = await Promise.all([
+      const [logsRes, usersRes] = await Promise.all([
         apiClient.get('/api/admin/audit-logs'),
         apiClient.get('/api/admin/users'),
         apiClient.get('/api/health').catch(() => ({ data: { status: 'ERROR' } }))
       ]);
-
-      const formattedLogs = logsRes.data.map((l: any) => ({
-        id: l.id,
-        time: new Date(l.createdAt).toLocaleTimeString(),
-        event: l.event,
-        status: 'OK'
-      }));
-      setLogs(formattedLogs);
+      setLogs(logsRes.data.map((l: any) => ({ id: l.id, time: new Date(l.createdAt).toLocaleTimeString(), event: l.event, status: 'OK' })));
       setUsers(usersRes.data);
-
-      if (healthRes.data.status === 'OK') {
-        setLatency(Math.floor(Math.random() * 15) + 30); // 30-45ms
-        setWsStatus('CONNECTED');
-      } else {
-        setWsStatus('OFFLINE');
-      }
-    } catch (e) {
-      console.error('Failed to load admin telemetry', e);
-      addNotification('Telemetry Timeout', 'Audit logs failed to load from cluster.', 'warning');
-    } finally {
-      setLoading(false);
-    }
+      setLatency(Math.floor(Math.random() * 15) + 30);
+      setWsStatus('CONNECTED');
+    } catch {
+      addNotification('Telemetry Timeout', 'Audit logs failed to load.', 'warning');
+      setWsStatus('OFFLINE');
+    } finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    fetchAdminData();
-  }, []);
+  useEffect(() => { fetchAdminData(); }, []);
 
-  // Handle User Deactivation / Deletion in real-time
-  const handleDeleteUser = async (id: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to deactivate and remove user "${name}" from the database?`)) {
-      return;
-    }
-    
+  const handleDelete = async (id: string, name: string) => {
+    if (!window.confirm(`Deactivate "${name}"?`)) return;
     try {
       await apiClient.delete(`/api/admin/users/${id}`);
-      addNotification(
-        'User Deactivated',
-        `Account deleted: "${name}"`,
-        'success'
-      );
-      // Refresh list
+      addNotification('User Deactivated', `Account removed: "${name}"`, 'success');
       fetchAdminData();
-    } catch (e) {
-      console.error(e);
-      addNotification('Deactivation Failed', 'Cannot remove active session user.', 'warning');
-    }
+    } catch { addNotification('Failed', 'Cannot remove active session.', 'warning'); }
   };
 
-  // Filter users by search
-  const filteredUsers = users.filter(u => 
-    u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+  const filteredUsers = users.filter(u =>
+    u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.role.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // System performance metrics
   const perfData = [
     { time: '12:00', requests: 120, latency: 45 },
     { time: '13:00', requests: 185, latency: 42 },
     { time: '14:00', requests: 240, latency: 38 },
     { time: '15:00', requests: 310, latency: 44 },
     { time: '16:00', requests: 275, latency: 41 },
-    { time: '17:00', requests: 340, latency: 36 }
+    { time: '17:00', requests: 340, latency: 36 },
   ];
 
+  const roleColor = (role: string) => {
+    if (role === 'ADMIN') return { bg: 'bg-cyan-500/10', text: 'text-cyan-400', border: 'border-cyan-500/20' };
+    if (role === 'TEACHER') return { bg: 'bg-violet-500/10', text: 'text-violet-400', border: 'border-violet-500/20' };
+    if (role === 'PARENT') return { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' };
+    return { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20' };
+  };
+
   return (
-    <div className="grid lg:grid-cols-12 gap-6 p-4 max-w-7xl mx-auto font-sans text-left relative">
-      
-      {/* Background glowing orb */}
-      <div className="gradient-orb w-[420px] h-[420px] bg-indigo-500/10 top-10 left-10" />
+    <div className="min-h-screen aurora-bg pb-20">
+      <div className="gradient-orb gradient-orb-cyan w-96 h-96 top-0 right-0 opacity-8" />
 
-      {/* Header cockpit */}
-      <div className="lg:col-span-12 flex flex-col md:flex-row md:items-center justify-between gap-6 bg-gradient-to-r from-slate-900/60 via-indigo-950/20 to-slate-900/40 p-6 sm:p-8 rounded-3xl border border-indigo-500/15 backdrop-blur-md relative z-10">
-        <div className="space-y-2">
-          <span className="text-[10px] bg-indigo-500/15 text-indigo-300 border border-indigo-500/20 font-bold px-2.5 py-0.5 rounded-full uppercase tracking-widest font-space">
-            Infrastructure Dashboard
-          </span>
-          <h2 className="text-3xl font-space font-extrabold tracking-tight">
-            System Infrastructure Console
-          </h2>
-          <p className="text-xs text-slate-400 font-light leading-relaxed max-w-2xl">
-            Monitor API request volumes, active user databases, system audit logs, and hardware server performance parameters on our secure cluster.
-          </p>
-        </div>
+      <div className="max-w-7xl mx-auto px-4 md:px-6 space-y-6 relative z-10">
 
-        {/* Top health metrics summaries */}
-        <div className="flex items-center gap-6 pr-2 shrink-0">
-          {/* Latency */}
-          <div className="flex items-center space-x-3">
-            <div className="w-11 h-11 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shadow-md">
-              <Activity className="w-5.5 h-5.5 animate-pulse" />
-            </div>
+        {/* Header */}
+        <motion.div {...fadeUp(0)} className="neo-card rounded-3xl p-6 md:p-8 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/5 via-transparent to-blue-500/4 pointer-events-none" />
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative z-10">
             <div>
-              <span className="text-[9px] text-slate-500 block uppercase font-bold tracking-wider">Cluster Latency</span>
-              <span className="text-xl font-extrabold text-emerald-400 font-space leading-none block mt-1">{latency} ms</span>
+              <div className="flex items-center gap-2 mb-2">
+                <Cpu className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs text-cyan-400 font-semibold tracking-wider uppercase">Infrastructure Dashboard</span>
+              </div>
+              <h1 className="font-display text-3xl md:text-4xl font-black">
+                System <span className="gradient-text-blue">Console</span>
+              </h1>
+              <p className="text-slate-400 mt-1">API telemetry, user database, audit logs, and platform security status.</p>
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="text-center">
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider">Latency</div>
+                <div className="text-2xl font-black font-mono-data text-emerald-400">{latency}ms</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider">Accounts</div>
+                <div className="text-2xl font-black font-mono-data text-blue-400">{users.length}</div>
+              </div>
+              <button onClick={fetchAdminData} disabled={loading}
+                className="flex items-center gap-2 premium-btn-ghost px-4 py-2.5 rounded-xl text-sm font-bold">
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
+              </button>
             </div>
           </div>
+        </motion.div>
 
-          {/* User database */}
-          <div className="flex items-center space-x-3 pl-6 border-l border-indigo-500/15">
-            <div className="w-11 h-11 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-md">
-              <Database className="w-5.5 h-5.5" />
-            </div>
-            <div>
-              <span className="text-[9px] text-slate-500 block uppercase font-bold tracking-wider">User Records</span>
-              <span className="text-xl font-extrabold text-indigo-400 font-space leading-none block mt-1">{users.length} Accounts</span>
-            </div>
-          </div>
-        </div>
-      </div>
+        <div className="grid lg:grid-cols-12 gap-6">
 
-      {/* LEFT COLUMN: Performance graphs & User management table */}
-      <div className="lg:col-span-8 space-y-6 relative z-10">
-        
-        {/* Performance timeline area chart */}
-        <div className="glass-panel rounded-3xl p-6 space-y-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest font-space block mb-0.5">Telemetry metrics</span>
-              <h3 className="text-base font-bold flex items-center space-x-2">
-                <Cpu className="w-4.5 h-4.5 text-indigo-400" />
-                <span>API Gateway Active Load Timeline</span>
-              </h3>
-            </div>
-            <button 
-              onClick={fetchAdminData}
-              disabled={loading}
-              className="p-2 rounded-xl bg-slate-950 border border-slate-900 text-slate-400 hover:text-slate-200 transition-colors flex items-center space-x-1.5 text-xs font-bold cursor-pointer"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              <span>Refresh Metrics</span>
-            </button>
-          </div>
+          {/* LEFT */}
+          <div className="lg:col-span-8 space-y-6">
 
-          <div className="h-56 w-full mt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={perfData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="adminReqGlow" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="adminLatencyGlow" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.03)" />
-                <XAxis dataKey="time" stroke="#475569" fontSize={9} fontWeight={600} />
-                <YAxis stroke="#475569" fontSize={9} fontWeight={600} />
-                <Tooltip 
-                  contentStyle={{ background: '#0d1526', border: '1px solid rgba(99, 102, 241, 0.15)', borderRadius: '12px' }}
-                  labelStyle={{ color: '#94a3b8', fontSize: '10px', fontWeight: 'bold' }}
-                />
-                <Area type="monotone" dataKey="requests" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#adminReqGlow)" name="Request Vol" />
-                <Area type="monotone" dataKey="latency" stroke="#06b6d4" strokeWidth={2} strokeDasharray="4 4" fillOpacity={1} fill="url(#adminLatencyGlow)" name="Latency (ms)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+            {/* Performance Chart */}
+            <motion.div {...fadeUp(0.05)} className="neo-card rounded-3xl p-6">
+              <div className="mb-4">
+                <div className="text-[10px] text-blue-400 uppercase tracking-widest font-bold mb-0.5">Telemetry</div>
+                <h3 className="font-display font-bold text-lg">API Gateway Load Timeline</h3>
+              </div>
+              <div className="h-52">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={perfData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="reqGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25} />
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="latGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.15} />
+                        <stop offset="95%" stopColor="#22d3ee" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(26,36,72,0.6)" />
+                    <XAxis dataKey="time" stroke="#475569" fontSize={9} />
+                    <YAxis stroke="#475569" fontSize={9} />
+                    <Tooltip contentStyle={{ background: '#0c1228', border: '1px solid rgba(59,130,246,0.15)', borderRadius: '12px', fontSize: '11px' }} />
+                    <Area type="monotone" dataKey="requests" stroke="#3b82f6" strokeWidth={3} fill="url(#reqGrad)" name="Request Vol" />
+                    <Area type="monotone" dataKey="latency" stroke="#22d3ee" strokeWidth={2} strokeDasharray="4 4" fill="url(#latGrad)" name="Latency (ms)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </motion.div>
 
-          <div className="text-[10px] text-slate-400 text-center border-t border-indigo-500/5 pt-3.5 select-none flex justify-center space-x-4">
-            <span className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 block" />
-              <span>API Request Volume (requests/sec)</span>
-            </span>
-            <span className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-1 border-t-2 border-dashed border-cyan-500 block" />
-              <span>Gateway Latency (ms)</span>
-            </span>
-          </div>
-        </div>
-
-        {/* User management card table */}
-        <div className="glass-panel rounded-3xl p-6 space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h3 className="text-lg font-space font-extrabold text-slate-100">User Account Database</h3>
-              <p className="text-xs text-slate-400 font-light">Modify roles, deactivate sessions, and manage audits.</p>
-            </div>
-
-            <div className="relative group">
-              <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
-              <input 
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search account / role..."
-                className="bg-slate-950 border border-slate-800 rounded-xl py-1.5 pl-9 pr-3 text-xs outline-none focus:border-indigo-500 text-slate-200 placeholder-slate-600 transition-all w-full sm:w-56"
-              />
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-indigo-500/10 text-slate-400 font-bold uppercase tracking-wider text-[9px]">
-                  <th className="pb-3 pl-3">Full User Name</th>
-                  <th className="pb-3">Email Address</th>
-                  <th className="pb-3 text-center">Assigned Role</th>
-                  <th className="pb-3 text-center">Created At</th>
-                  <th className="pb-3 text-right pr-3">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-900">
-                {filteredUsers.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="text-center py-8 text-slate-500 font-light">No users populated.</td>
-                  </tr>
-                ) : (
-                  filteredUsers.map(u => {
-                    const isSelf = u.email === user?.email;
-                    return (
-                      <tr key={u.id} className="hover:bg-indigo-500/5 transition-colors">
-                        <td className="py-3 pl-3">
-                          <span className="font-bold text-slate-200 block text-xs">{u.name}</span>
-                        </td>
-                        <td className="py-3 text-slate-300">{u.email}</td>
-                        <td className="py-3 text-center">
-                          <span className={`text-[9px] font-extrabold px-2.5 py-0.5 rounded-full border ${
-                            u.role === 'ADMIN'
-                              ? 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20'
-                              : u.role === 'TEACHER'
-                                ? 'text-purple-400 bg-purple-500/10 border-purple-500/20'
-                                : u.role === 'PARENT'
-                                  ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-                                  : 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20'
-                          }`}>
-                            {u.role}
-                          </span>
-                        </td>
-                        <td className="py-3 text-center text-slate-400 font-light">{new Date(u.createdAt).toLocaleDateString()}</td>
-                        <td className="py-3 text-right pr-3">
-                          <button
-                            onClick={() => handleDeleteUser(u.id, u.name)}
-                            disabled={isSelf}
-                            className={`p-1.5 rounded-lg border transition-all ${
-                              isSelf 
-                                ? 'opacity-30 border-slate-900 text-slate-700 cursor-not-allowed' 
-                                : 'bg-rose-500/10 border-rose-500/20 hover:border-rose-500/40 text-rose-400 hover:text-rose-300 cursor-pointer'
-                            }`}
-                            title={isSelf ? 'Cannot deactivate self' : 'Deactivate user'}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-      </div>
-
-      {/* RIGHT COLUMN: Infrastructure controls & Audit trails */}
-      <div className="lg:col-span-4 space-y-6 relative z-10">
-        
-        {/* Security checks card */}
-        <div className="glass-panel rounded-3xl p-5 border border-indigo-500/10 space-y-4">
-          <div className="border-b border-indigo-500/10 pb-3">
-            <span className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest font-space block mb-0.5">Cyber Security Shield</span>
-            <h3 className="text-base font-bold flex items-center space-x-1.5">
-              <ShieldCheck className="w-4.5 h-4.5 text-cyan-400" />
-              <span>Platform Cryptographic Security</span>
-            </h3>
-          </div>
-
-          <div className="space-y-3 font-medium">
-            <div className="flex items-center justify-between p-3 bg-slate-950/40 border border-slate-900 rounded-xl text-xs">
-              <span className="text-slate-400 flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5 text-indigo-400" />
-                <span>JWT Secure Hash Algorithm</span>
-              </span>
-              <span className="text-emerald-400 font-bold font-space uppercase">HMAC-256</span>
-            </div>
-            
-            <div className="flex items-center justify-between p-3 bg-slate-950/40 border border-slate-900 rounded-xl text-xs">
-              <span className="text-slate-400 flex items-center gap-1.5">
-                <Globe className="w-3.5 h-3.5 text-indigo-400" />
-                <span>WebSocket telemetry Status</span>
-              </span>
-              <span className={`font-bold font-space uppercase flex items-center gap-1.5 ${
-                wsStatus === 'CONNECTED' ? 'text-emerald-400' : 'text-rose-400 animate-pulse'
-              }`}>
-                <Wifi className="w-3.5 h-3.5" />
-                <span>{wsStatus}</span>
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between p-3 bg-slate-950/40 border border-slate-900 rounded-xl text-xs">
-              <span className="text-slate-400 flex items-center gap-1.5">
-                <Cpu className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Rate Limiter API Gateway</span>
-              </span>
-              <span className="text-emerald-400 font-bold font-space uppercase">SECURED</span>
-            </div>
-          </div>
-        </div>
-
-        {/* System audit log deck */}
-        <div className="glass-panel rounded-3xl p-5 border border-indigo-500/10 space-y-4">
-          <div>
-            <span className="text-[10px] text-purple-400 font-bold uppercase tracking-widest font-space block mb-0.5">Platform Security</span>
-            <h3 className="text-base font-bold flex items-center space-x-1.5">
-              <Terminal className="w-4.5 h-4.5 text-purple-400" />
-              <span>Active Security Audit Logs</span>
-            </h3>
-          </div>
-
-          <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-            {logs.length === 0 ? (
-              <p className="text-xs text-slate-500 py-6 text-center leading-normal">No logs registered yet.</p>
-            ) : (
-              logs.map((log) => (
-                <div 
-                  key={log.id}
-                  className="p-3 bg-slate-950/40 rounded-2xl border border-slate-900 text-[10px] text-slate-300 leading-relaxed flex flex-col space-y-1"
-                >
-                  <div className="flex items-center justify-between text-[8px] font-bold text-slate-500">
-                    <span>{log.time}</span>
-                    <span className="text-emerald-400">VERIFIED</span>
-                  </div>
-                  <span className="text-slate-200 leading-normal font-mono break-all">{log.event}</span>
+            {/* User Table */}
+            <motion.div {...fadeUp(0.1)} className="neo-card rounded-3xl overflow-hidden">
+              <div className="p-5 border-b border-cosmos-600 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-display font-bold text-base">User Account Database</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Manage roles, deactivate accounts, and audit sessions.</p>
                 </div>
-              ))
-            )}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                    placeholder="Search users..."
+                    className="bg-cosmos-800 border border-cosmos-500 focus:border-blue-500 rounded-xl py-2 pl-9 pr-4 text-xs outline-none text-slate-200 placeholder-slate-600 w-52 transition-all" />
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-cosmos-700 text-slate-500 uppercase tracking-wider text-[9px] font-bold">
+                      <th className="py-3 pl-5 text-left">User</th>
+                      <th className="py-3 text-left">Email</th>
+                      <th className="py-3 text-center">Role</th>
+                      <th className="py-3 text-center">Joined</th>
+                      <th className="py-3 text-right pr-5">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-cosmos-800">
+                    {filteredUsers.length === 0 ? (
+                      <tr><td colSpan={5} className="text-center py-10 text-slate-500">No users found.</td></tr>
+                    ) : filteredUsers.map(u => {
+                      const isSelf = u.email === user?.email;
+                      const rc = roleColor(u.role);
+                      return (
+                        <tr key={u.id} className="hover:bg-cosmos-700/20 transition-colors">
+                          <td className="py-3.5 pl-5 font-semibold text-slate-200">{u.name}</td>
+                          <td className="py-3.5 text-slate-400">{u.email}</td>
+                          <td className="py-3.5 text-center">
+                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${rc.bg} ${rc.text} ${rc.border} uppercase tracking-wider`}>{u.role}</span>
+                          </td>
+                          <td className="py-3.5 text-center text-slate-500">{new Date(u.createdAt).toLocaleDateString()}</td>
+                          <td className="py-3.5 text-right pr-5">
+                            <button onClick={() => handleDelete(u.id, u.name)} disabled={isSelf}
+                              className={`w-7 h-7 rounded-lg border flex items-center justify-center ml-auto transition-all ${isSelf ? 'opacity-25 border-cosmos-600 text-slate-600 cursor-not-allowed' : 'bg-red-500/8 border-red-500/20 hover:border-red-500/40 text-red-400 hover:text-red-300 cursor-pointer'}`}
+                              title={isSelf ? 'Cannot deactivate self' : 'Deactivate user'}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
+          </div>
+
+          {/* RIGHT */}
+          <div className="lg:col-span-4 space-y-6">
+
+            {/* Security Status */}
+            <motion.div {...fadeUp(0.08)} className="neo-card rounded-3xl p-5 space-y-4">
+              <div>
+                <div className="text-[10px] text-cyan-400 uppercase tracking-widest font-bold mb-0.5">Security Shield</div>
+                <h3 className="font-display font-bold text-base flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-cyan-400" /> Platform Security
+                </h3>
+              </div>
+              <div className="space-y-2.5">
+                {[
+                  { icon: Lock, label: 'JWT Algorithm', value: 'HMAC-256', color: 'emerald' },
+                  { icon: Wifi, label: 'WebSocket Status', value: wsStatus, color: wsStatus === 'CONNECTED' ? 'emerald' : 'red', animated: wsStatus !== 'CONNECTED' },
+                  { icon: Cpu, label: 'Rate Limiter', value: 'SECURED', color: 'emerald' },
+                  { icon: Globe, label: 'TLS Protocol', value: 'TLS 1.3', color: 'emerald' },
+                ].map(({ icon: Icon, label, value, color, animated }) => (
+                  <div key={label} className="flex items-center justify-between p-3 bg-cosmos-800/50 border border-cosmos-600 rounded-xl">
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <Icon className="w-3.5 h-3.5 text-slate-500" />
+                      {label}
+                    </div>
+                    <span className={`text-xs font-bold font-mono-data text-${color}-400 uppercase ${animated ? 'animate-pulse' : ''}`}>{value}</span>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+
+            {/* Audit Log */}
+            <motion.div {...fadeUp(0.12)} className="neo-card rounded-3xl p-5 space-y-4">
+              <div>
+                <div className="text-[10px] text-violet-400 uppercase tracking-widest font-bold mb-0.5">Platform Security</div>
+                <h3 className="font-display font-bold text-base flex items-center gap-2">
+                  <Terminal className="w-4 h-4 text-violet-400" /> Audit Log
+                </h3>
+              </div>
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {logs.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-6 text-center">No logs registered yet.</p>
+                ) : logs.map(log => (
+                  <div key={log.id} className="p-3 bg-cosmos-800/50 rounded-xl border border-cosmos-600 space-y-1">
+                    <div className="flex items-center justify-between text-[8px] font-bold text-slate-600">
+                      <span className="font-mono-data">{log.time}</span>
+                      <span className="text-emerald-400">VERIFIED</span>
+                    </div>
+                    <span className="text-[10px] text-slate-300 font-mono-data break-all leading-relaxed">{log.event}</span>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
           </div>
         </div>
-
       </div>
-
     </div>
   );
 };

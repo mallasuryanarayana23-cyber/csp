@@ -1,806 +1,478 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../../store/useStore';
-import { 
-  Users, 
-  FileText, 
-  TrendingUp, 
-  AlertTriangle, 
-  Download, 
-  BrainCircuit, 
-  Activity, 
-  Search, 
-  Sliders, 
-  X, 
-  Plus, 
-  Calendar, 
-  ChevronRight, 
-  BookOpen, 
-  FileSignature, 
-  Clock, 
-  Award,
-  Sparkles,
-  RefreshCw,
-  Eye,
-  CheckCircle,
-  FileBadge,
-  Mic
+import {
+  Users, FileText, AlertTriangle, Download, BrainCircuit, Activity,
+  Search, X, Plus, Calendar, ChevronRight, Clock, Sparkles, RefreshCw,
+  Eye, CheckCircle, TrendingUp, ArrowUpRight, Filter, MoreHorizontal,
+  Target, Zap, BookOpen, Layers
 } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import jsPDF from 'jspdf';
 import { apiClient } from '../../services/api/client';
 
-export const TeacherPortal: React.FC = () => {
-  const { 
-    students, 
-    aiReports, 
-    readingTests, 
-    fetchStudents, 
-    fetchReadingTests, 
-    fetchReports, 
-    addNotification 
-  } = useStore();
+const fadeUp = (delay = 0) => ({
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1], delay },
+});
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedRiskFilter, setSelectedRiskFilter] = useState<'ALL' | 'HIGH' | 'MEDIUM' | 'LOW'>('ALL');
+// ─── Risk Badge ─────────────────────────────────────────────────────────────
+const RiskBadge: React.FC<{ risk: string }> = ({ risk }) => {
+  const classes = {
+    HIGH: 'risk-badge-high', MEDIUM: 'risk-badge-medium', LOW: 'risk-badge-low',
+  }[risk] || 'risk-badge-low';
+  return <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${classes} uppercase tracking-wider`}>{risk}</span>;
+};
+
+// ─── Stat Card ───────────────────────────────────────────────────────────────
+const StatCard: React.FC<{ label: string; value: string | number; icon: any; color: string; sub: string; delay?: number }> = ({
+  label, value, icon: Icon, color, sub, delay = 0
+}) => (
+  <motion.div {...fadeUp(delay)} className="neo-card rounded-2xl p-5 space-y-4">
+    <div className="flex items-center justify-between">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center`}
+        style={{ background: `${color}18`, border: `1px solid ${color}30` }}>
+        <Icon className="w-5 h-5" style={{ color }} />
+      </div>
+      <ArrowUpRight className="w-4 h-4 text-slate-600" />
+    </div>
+    <div>
+      <div className="font-display text-3xl font-black text-white">{value}</div>
+      <div className="text-sm font-medium text-slate-400 mt-0.5">{label}</div>
+      <div className="text-xs text-slate-600 mt-1">{sub}</div>
+    </div>
+  </motion.div>
+);
+
+export const TeacherPortal: React.FC = () => {
+  const { students, aiReports, readingTests, fetchStudents, fetchReadingTests, fetchReports, addNotification } = useStore();
+
+  const [search, setSearch] = useState('');
+  const [riskFilter, setRiskFilter] = useState<'ALL' | 'HIGH' | 'MEDIUM' | 'LOW'>('ALL');
   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
-  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [selectedTestId, setSelectedTestId] = useState('');
   const [dueDate, setDueDate] = useState('');
-  
-  // Slide-in panel notes editing state
   const [notes, setNotes] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
-  const [notesSuccess, setNotesSuccess] = useState(false);
   const [assigningLoading, setAssigningLoading] = useState(false);
-  const [assigningSuccess, setAssigningSuccess] = useState(false);
 
+  useEffect(() => { fetchStudents(); fetchReadingTests(); }, []);
   useEffect(() => {
-    fetchStudents();
-    fetchReadingTests();
-  }, []);
-
-  // Update notes state when student or report changes
-  useEffect(() => {
-    if (selectedStudent) {
-      fetchReports(selectedStudent.id);
-    }
+    if (selectedStudent) fetchReports(selectedStudent.id);
   }, [selectedStudent]);
 
   const activeReport = selectedStudent ? aiReports.find(r => r.studentId === selectedStudent.id) : null;
+  useEffect(() => { if (activeReport) setNotes(activeReport.teacherNotes || ''); else setNotes(''); }, [activeReport]);
 
-  useEffect(() => {
-    if (activeReport) {
-      setNotes(activeReport.teacherNotes || '');
-    } else {
-      setNotes('');
-    }
-  }, [activeReport]);
-
-  // Fallbacks & Stats mapping
+  // Stats
   const totalStudents = students.length;
-  const highRiskCount = students.filter(s => {
-    const r = aiReports.find(report => report.studentId === s.id);
-    return r?.dyslexiaRisk === 'HIGH';
+  const highRisk = students.filter(s => {
+    const rep = aiReports.find(r => r.studentId === s.id);
+    return rep?.dyslexiaRisk === 'HIGH' || rep?.adhdRisk === 'HIGH';
   }).length;
-  const mediumRiskCount = students.filter(s => {
-    const r = aiReports.find(report => report.studentId === s.id);
-    return r?.dyslexiaRisk === 'MEDIUM';
-  }).length;
+  const avgFocus = students.length > 0 ? Math.round(students.reduce((a, s) => a + (s.focusScore || 80), 0) / students.length) : 88;
+  const pendingTests = students.filter(s => (s.assignedTests?.length || 0) > (s.completedTests?.length || 0)).length;
 
-  const avgFocus = totalStudents > 0 
-    ? Math.round(students.reduce((acc, s) => acc + s.focusScore, 0) / totalStudents) 
-    : 0;
-
-  // Cohort progress dataset
-  const cohortProgress = [
-    { name: 'Week 1', focus: 72, wpm: 68 },
-    { name: 'Week 2', focus: 75, wpm: 70 },
-    { name: 'Week 3', focus: 79, wpm: 71 },
-    { name: 'Week 4', focus: 84, wpm: 75 },
-    { name: 'Week 5', focus: 88, wpm: 78 },
-  ];
-
-  // Initials profile color helpers
-  const getAvatarBg = (name: string) => {
-    const colors = [
-      'bg-indigo-500/10 text-indigo-300 border-indigo-500/30',
-      'bg-purple-500/10 text-purple-300 border-purple-500/30',
-      'bg-emerald-500/10 text-emerald-300 border-emerald-500/30',
-      'bg-cyan-500/10 text-cyan-300 border-cyan-500/30',
-      'bg-pink-500/10 text-pink-300 border-pink-500/30'
-    ];
-    const sum = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return colors[sum % colors.length];
-  };
-
-  const getRiskColor = (tier: string) => {
-    if (tier === 'HIGH') return 'text-rose-400 bg-rose-500/10 border-rose-500/25';
-    if (tier === 'MEDIUM') return 'text-amber-400 bg-amber-500/10 border-amber-500/25';
-    return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25';
-  };
-
-  // Filter students based on search query and risk rating
-  const filteredStudents = students.filter(s => {
-    const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          s.email.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const r = aiReports.find(report => report.studentId === s.id);
-    const riskTier = r?.dyslexiaRisk || 'LOW';
-
-    if (selectedRiskFilter === 'ALL') return matchesSearch;
-    return matchesSearch && riskTier === selectedRiskFilter;
+  // Filtered students
+  const filtered = students.filter(s => {
+    const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) || s.email.toLowerCase().includes(search.toLowerCase());
+    const rep = aiReports.find(r => r.studentId === s.id);
+    const matchRisk = riskFilter === 'ALL' || rep?.dyslexiaRisk === riskFilter || rep?.adhdRisk === riskFilter;
+    return matchSearch && matchRisk;
   });
 
-  // Handle professional Notes Saving
+  // Class performance chart
+  const classData = students.slice(0, 7).map(s => ({
+    name: s.name.split(' ')[0],
+    focus: s.focusScore || 80,
+    risk: aiReports.find(r => r.studentId === s.id)?.dyslexiaProb || 15,
+  }));
+
   const handleSaveNotes = async () => {
-    if (!activeReport) return;
+    if (!selectedStudent) return;
     setSavingNotes(true);
-    setNotesSuccess(false);
     try {
-      await apiClient.put(`/api/reports/${activeReport.id}/notes`, { notes });
-      setNotesSuccess(true);
-      addNotification(
-        'Notes Updated Successfully',
-        `Educator clinical notes saved for student: ${selectedStudent.name}.`,
-        'success'
-      );
-      setTimeout(() => setNotesSuccess(false), 3000);
-    } catch (e) {
-      console.error(e);
-      addNotification('Failed to Save Notes', 'Database sync encountered a pipeline error.', 'warning');
-    } finally {
-      setSavingNotes(false);
-    }
+      await apiClient.put(`/api/reports/${selectedStudent.id}/notes`, { teacherNotes: notes });
+      addNotification('Notes Saved', `Clinical notes updated for ${selectedStudent.name}.`, 'success');
+    } catch {
+      addNotification('Save Failed', 'Could not connect to backend.', 'warning');
+    } finally { setSavingNotes(false); }
   };
 
-  // Handle assigning test to selectedStudent
-  const handleAssignTestSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAssignTest = async () => {
     if (!selectedStudent || !selectedTestId) return;
     setAssigningLoading(true);
-    setAssigningSuccess(false);
     try {
-      await apiClient.post(`/api/students/${selectedStudent.id}/assign-test`, {
-        testId: selectedTestId
-      });
-      setAssigningSuccess(true);
-      addNotification(
-        'Screening Assigned',
-        `Successfully queued exercise for student: ${selectedStudent.name}`,
-        'success'
-      );
-      setTimeout(() => {
-        setIsAssignModalOpen(false);
-        setAssigningSuccess(false);
-        setSelectedTestId('');
-        setDueDate('');
-      }, 2000);
-    } catch (e) {
-      console.error(e);
-      addNotification('Assignment Failed', 'Database could not register assigning task.', 'warning');
-    } finally {
-      setAssigningLoading(false);
-    }
+      await apiClient.post('/api/assignments', { studentId: selectedStudent.id, testId: selectedTestId, dueDate });
+      addNotification('Test Assigned', `Assigned to ${selectedStudent.name}.`, 'success');
+      setIsAssignOpen(false);
+    } catch {
+      addNotification('Assignment Failed', 'Could not reach backend.', 'warning');
+    } finally { setAssigningLoading(false); }
   };
 
-  // Professional jsPDF compiler layout generator
-  const generatePDFReport = (student: any) => {
-    const report = aiReports.find(r => r.studentId === student.id) || aiReports[0];
+  const generatePDF = (student: any) => {
     const doc = new jsPDF();
-    
-    // Page theme background borders
-    doc.setDrawColor(99, 102, 241);
-    doc.setLineWidth(1.5);
-    doc.rect(5, 5, 200, 287);
-
-    // Document Header
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(22);
-    doc.setTextColor(15, 23, 42); // slate-900
-    doc.text("NEUROLEARN AI DIAGNOSTIC SUITE", 20, 25);
-    
-    doc.setFontSize(10);
-    doc.setFont("Helvetica", "normal");
-    doc.setTextColor(100, 116, 139); // slate-500
-    doc.text("HIPAA Protected - Secure Clinical Telemetry Report", 20, 30);
-    doc.text(`Report Compiled: ${new Date().toLocaleDateString()}`, 140, 30);
-
-    doc.setDrawColor(226, 232, 240); // slate-200 border
-    doc.setLineWidth(0.5);
-    doc.line(20, 35, 190, 35);
-
-    // Profile Details Card
-    doc.setFontSize(13);
-    doc.setFont("Helvetica", "bold");
-    doc.setTextColor(79, 70, 229); // indigo-600
-    doc.text("STUDENT PROFILE INFO", 20, 48);
-
-    doc.setFontSize(11);
-    doc.setTextColor(15, 23, 42);
-    doc.setFont("Helvetica", "normal");
-    doc.text(`Student Name:  ${student.name}`, 20, 56);
-    doc.text(`Grade Level:   ${student.grade || '4th Grade'}`, 20, 64);
-    doc.text(`School:        ${student.school?.name || 'Default Academy'}`, 20, 72);
-    
-    doc.text(`Average Focus rating:  ${student.focusScore}%`, 110, 56);
-    doc.text(`Risk Quotient Prob:    ${report?.dyslexiaProb || 48}%`, 110, 64);
-    doc.text(`Overall Risk Tier:     ${report?.dyslexiaRisk || 'MEDIUM'}`, 110, 72);
-
-    doc.line(20, 80, 190, 80);
-
-    // Multi-modal Analysis Section
-    doc.setFontSize(13);
-    doc.setFont("Helvetica", "bold");
-    doc.setTextColor(79, 70, 229);
-    doc.text("MULTI-MODAL NEURAL CLOUD FUSION ANALYSIS", 20, 93);
-
-    doc.setFontSize(10.5);
-    doc.setTextColor(51, 65, 85); // slate-700
-    doc.setFont("Helvetica", "normal");
-    
-    const analysisText = 
-      `The NeuroLearn ensemble-v2.0 classifier evaluated physical gaze deviation shifts, QWERTY typing hesitation indexes, and audio waveform frequencies. Gaze tracking registered distraction events of ${student.metricsHistory ? student.metricsHistory[0]?.distractionEvents || 1 : 1} tracking skips. Keystroke rhythm was consistent with a ${report?.typingRhythmConsistency || 74}% score. Audio segmentations via our PyTorch Whisper cluster flagged speech fluency consistency at ${report?.speechFluencyScore || 82}%. The combined vector predicts a ${report?.dyslexiaRisk || 'MEDIUM'} probability of dyslexia reading traits.`;
-    
-    const splitText = doc.splitTextToSize(analysisText, 170);
-    doc.text(splitText, 20, 102);
-
-    doc.line(20, 135, 190, 135);
-
-    // Recommended Interventions
-    doc.setFontSize(13);
-    doc.setFont("Helvetica", "bold");
-    doc.setTextColor(79, 70, 229);
-    doc.text("RECOMMENDED EDUCATIONAL WORKOUTS", 20, 148);
-
-    doc.setFontSize(11);
-    doc.setTextColor(15, 23, 42);
-    doc.setFont("Helvetica", "normal");
-    
-    const recs = report?.recommendations 
-      ? (typeof report.recommendations === 'string' ? JSON.parse(report.recommendations) : report.recommendations)
-      : ['Provide OpenDyslexic high-legibility UI text mode overlays.', 'Assign 2-minute visual attention focus calibration breaks.'];
-
-    recs.forEach((recText: string, idx: number) => {
-      doc.text(`[${idx + 1}]  ${recText}`, 20, 158 + (idx * 9));
-    });
-
-    doc.line(20, 185, 190, 185);
-
-    // Educator Professional notes
-    doc.setFontSize(13);
-    doc.setFont("Helvetica", "bold");
-    doc.setTextColor(79, 70, 229);
-    doc.text("EDUCATOR OBSERVATIONAL OBSERVATIONS", 20, 198);
-
-    doc.setFontSize(11);
-    doc.setTextColor(51, 65, 85);
-    doc.setFont("Helvetica", "italic");
-    
-    const educatorNotes = notes || report?.teacherNotes || "No educator clinical notations logged at this time.";
-    const splitNotes = doc.splitTextToSize(educatorNotes, 170);
-    doc.text(splitNotes, 20, 206);
-
-    // Signatures footer block
-    doc.line(20, 245, 190, 245);
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(15, 23, 42);
-    doc.text("Professor Marcus Vance", 20, 260);
-    doc.setFont("Helvetica", "normal");
-    doc.text("Certified Clinical Practitioner / Educator", 20, 265);
-    doc.line(20, 255, 80, 255); // signature line
-
-    doc.text("AI Verification signature:", 120, 260);
-    doc.setFont("Courier", "bold");
-    doc.setTextColor(16, 185, 129); // emerald-500
-    doc.text("neurolearn-ai-verified-md5", 120, 265);
-
-    doc.save(`${student.name.replace(" ", "_")}_NeuroLearn_Diagnostic.pdf`);
-    
-    addNotification(
-      'PDF Generated',
-      `Official cognitive report exported for ${student.name}`,
-      'success'
-    );
+    const report = aiReports.find(r => r.studentId === student.id);
+    doc.setFontSize(22); doc.text('NeuroLearn — Clinical Report', 20, 25);
+    doc.setFontSize(11); doc.setTextColor(80, 80, 80);
+    doc.text(`Student: ${student.name}`, 20, 42);
+    doc.text(`Grade: ${student.grade || 'N/A'}`, 20, 52);
+    doc.text(`Focus Score: ${student.focusScore}%`, 20, 62);
+    if (report) {
+      doc.text(`Dyslexia Risk: ${report.dyslexiaRisk} (${report.dyslexiaProb}%)`, 20, 72);
+      doc.text(`ADHD Risk: ${report.adhdRisk} (${report.adhdProb}%)`, 20, 82);
+      doc.text(`Recommendations:`, 20, 95);
+      report.recommendations?.forEach((r, i) => doc.text(`• ${r}`, 25, 105 + i * 10));
+    }
+    doc.save(`neurolearn_${student.name.replace(/\s/g, '_')}.pdf`);
+    addNotification('PDF Generated', `Report for ${student.name} downloaded.`, 'success');
   };
+
+  const initials = (name: string) => name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+  const avatarColors = ['#3b82f6', '#8b5cf6', '#22d3ee', '#10b981', '#f97316', '#ec4899'];
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto font-sans text-left px-4 relative">
-      
-      {/* Background radial orbs */}
-      <div className="gradient-orb w-96 h-96 bg-indigo-500/10 top-10 left-1/3" />
+    <div className="min-h-screen aurora-bg pb-20">
+      <div className="gradient-orb gradient-orb-violet w-96 h-96 top-0 right-0 opacity-8" />
 
-      {/* Top Meta Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
-        
-        {/* Stat 1 */}
-        <div className="glass-panel p-5 rounded-2xl flex items-center justify-between">
-          <div>
-            <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold font-space">Total Students</span>
-            <div className="text-3xl font-space font-extrabold mt-1 text-slate-200">{totalStudents}</div>
-          </div>
-          <div className="w-11 h-11 rounded-xl bg-indigo-500/10 border border-indigo-500/25 flex items-center justify-center">
-            <Users className="w-5.5 h-5.5 text-indigo-400" />
-          </div>
-        </div>
-        
-        {/* Stat 2 */}
-        <div className="glass-panel p-5 rounded-2xl flex items-center justify-between">
-          <div>
-            <span className="text-[10px] text-rose-400 uppercase tracking-widest font-bold font-space">High Risk</span>
-            <div className="text-3xl font-space font-extrabold mt-1 text-rose-400">{highRiskCount}</div>
-          </div>
-          <div className="w-11 h-11 rounded-xl bg-rose-500/10 border border-rose-500/25 flex items-center justify-center">
-            <AlertTriangle className="w-5.5 h-5.5 text-rose-400" />
-          </div>
-        </div>
+      <div className="max-w-7xl mx-auto px-4 md:px-6 space-y-6 relative z-10">
 
-        {/* Stat 3 */}
-        <div className="glass-panel p-5 rounded-2xl flex items-center justify-between">
-          <div>
-            <span className="text-[10px] text-emerald-400 uppercase tracking-widest font-bold font-space">Cohort Focus Avg</span>
-            <div className="text-3xl font-space font-extrabold mt-1 text-emerald-400">{avgFocus}%</div>
-          </div>
-          <div className="w-11 h-11 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center">
-            <TrendingUp className="w-5.5 h-5.5 text-emerald-400" />
-          </div>
-        </div>
-
-        {/* Stat 4 */}
-        <div className="glass-panel p-5 rounded-2xl flex items-center justify-between">
-          <div>
-            <span className="text-[10px] text-purple-400 uppercase tracking-widest font-bold font-space">Assigned Exercises</span>
-            <div className="text-3xl font-space font-extrabold mt-1 text-purple-400">{readingTests.length} Active</div>
-          </div>
-          <div className="w-11 h-11 rounded-xl bg-purple-500/10 border border-purple-500/25 flex items-center justify-center">
-            <BookOpen className="w-5.5 h-5.5 text-purple-400" />
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 relative z-10">
-        
-        {/* Left 8-cols: Student Data Roster */}
-        <div className="lg:col-span-8 glass-panel p-6 rounded-2xl space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        {/* ══ HEADER ════════════════════════════════════ */}
+        <motion.div {...fadeUp(0)} className="neo-card rounded-3xl p-6 md:p-8 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-violet-500/5 via-transparent to-blue-500/4 pointer-events-none" />
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative z-10">
             <div>
-              <h3 className="text-lg font-space font-extrabold text-slate-100">Student Cognitive Rosters</h3>
-              <p className="text-xs text-slate-400 font-light">Trace individual dyslexia/ADHD screening indexes and logs.</p>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+                <span className="text-xs text-violet-400 font-semibold tracking-wider uppercase">Intelligence Grid</span>
+              </div>
+              <h1 className="font-display text-3xl md:text-4xl font-black">
+                Teacher <span className="gradient-text-blue">Command Center</span>
+              </h1>
+              <p className="text-slate-400 mt-1">Class-wide cognitive analytics, intervention planning, and AI report generation.</p>
             </div>
-            
-            {/* Filter Toggle Pill & Search */}
-            <div className="flex items-center space-x-2.5">
-              <div className="relative group">
-                <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
-                <input 
-                  type="text" 
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Search student..."
-                  className="bg-slate-950 border border-slate-800 rounded-xl py-1.5 pl-9 pr-3 text-xs outline-none focus:border-indigo-500 text-slate-200 placeholder-slate-600 transition-all w-40 sm:w-48"
+            <button
+              onClick={() => { fetchStudents(); fetchReadingTests(); }}
+              className="flex items-center gap-2 premium-btn-ghost px-4 py-2.5 rounded-xl text-sm font-bold"
+            >
+              <RefreshCw className="w-4 h-4" /> Refresh Data
+            </button>
+          </div>
+        </motion.div>
+
+        {/* ══ STATS ROW ═════════════════════════════════ */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard label="Total Students" value={totalStudents} icon={Users} color="#3b82f6" sub="Active in cohort" delay={0.05} />
+          <StatCard label="High Risk Alerts" value={highRisk} icon={AlertTriangle} color="#f97316" sub="Need intervention" delay={0.08} />
+          <StatCard label="Average Focus" value={`${avgFocus}%`} icon={Target} color="#10b981" sub="Class baseline" delay={0.11} />
+          <StatCard label="Tests Pending" value={pendingTests} icon={Clock} color="#8b5cf6" sub="Assigned not done" delay={0.14} />
+        </div>
+
+        {/* ══ MAIN GRID ═════════════════════════════════ */}
+        <div className="grid lg:grid-cols-12 gap-6">
+
+          {/* LEFT — Student Table */}
+          <div className={`${selectedStudent ? 'lg:col-span-7' : 'lg:col-span-12'} space-y-4`}>
+
+            {/* Class Performance Chart */}
+            {!selectedStudent && classData.length > 0 && (
+              <motion.div {...fadeUp(0.1)} className="neo-card rounded-3xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="text-[10px] text-blue-400 uppercase tracking-widest font-bold mb-0.5">Analytics</div>
+                    <h3 className="font-display font-bold text-lg">Class Focus Distribution</h3>
+                  </div>
+                </div>
+                <div className="h-40">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={classData} margin={{ top: 0, right: 0, left: -25, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(26,36,72,0.6)" />
+                      <XAxis dataKey="name" stroke="#475569" fontSize={10} />
+                      <YAxis stroke="#475569" fontSize={10} domain={[0, 100]} />
+                      <Tooltip contentStyle={{ background: '#0c1228', border: '1px solid rgba(59,130,246,0.15)', borderRadius: '12px', fontSize: '11px' }} />
+                      <Bar dataKey="focus" fill="url(#barGrad)" radius={[4, 4, 0, 0]} name="Focus %" />
+                      <defs>
+                        <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#3b82f6" />
+                          <stop offset="100%" stopColor="#6366f1" />
+                        </linearGradient>
+                      </defs>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Search + Filter */}
+            <motion.div {...fadeUp(0.12)} className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="Search students..."
+                  className="w-full bg-cosmos-700 border border-cosmos-500 focus:border-blue-500 rounded-xl py-2.5 pl-10 pr-4 text-sm text-slate-200 placeholder-slate-600 outline-none transition-all"
                 />
               </div>
-
-              <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
-                {(['ALL', 'HIGH', 'MEDIUM'] as const).map((tier) => (
+              <div className="flex gap-2">
+                {(['ALL', 'HIGH', 'MEDIUM', 'LOW'] as const).map(f => (
                   <button
-                    key={tier}
-                    onClick={() => setSelectedRiskFilter(tier)}
-                    className={`px-2.5 py-1 rounded-lg text-[9px] font-extrabold tracking-widest uppercase cursor-pointer transition-colors ${
-                      selectedRiskFilter === tier 
-                        ? 'bg-indigo-600 text-white shadow shadow-indigo-600/15'
-                        : 'text-slate-400 hover:text-slate-200'
+                    key={f}
+                    onClick={() => setRiskFilter(f)}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                      riskFilter === f
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-cosmos-700 border border-cosmos-500 text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    {tier}
+                    {f}
                   </button>
                 ))}
               </div>
-            </div>
+            </motion.div>
+
+            {/* Student Table */}
+            <motion.div {...fadeUp(0.15)} className="neo-card rounded-3xl overflow-hidden">
+              <div className="p-4 border-b border-cosmos-600">
+                <h3 className="font-display font-bold text-sm text-slate-300">{filtered.length} Students</h3>
+              </div>
+              <div className="divide-y divide-cosmos-700">
+                {filtered.length === 0 ? (
+                  <div className="py-16 text-center text-slate-500 text-sm">No students match your search.</div>
+                ) : filtered.map((s, i) => {
+                  const rep = aiReports.find(r => r.studentId === s.id);
+                  const color = avatarColors[i % avatarColors.length];
+                  const isSelected = selectedStudent?.id === s.id;
+                  return (
+                    <motion.div
+                      key={s.id}
+                      onClick={() => setSelectedStudent(isSelected ? null : s)}
+                      className={`flex items-center gap-4 p-4 cursor-pointer transition-all ${
+                        isSelected ? 'bg-blue-500/8 border-l-2 border-blue-500' : 'hover:bg-cosmos-700/30'
+                      }`}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.04 }}
+                    >
+                      {/* Avatar */}
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-white flex-shrink-0"
+                        style={{ background: `${color}25`, border: `1px solid ${color}40`, color }}>
+                        {initials(s.name)}
+                      </div>
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-sm text-slate-200 truncate">{s.name}</div>
+                        <div className="text-xs text-slate-500 truncate">{s.grade || 'Grade N/A'} · {s.email}</div>
+                      </div>
+
+                      {/* Focus bar */}
+                      <div className="hidden sm:flex flex-col items-end gap-1 w-24">
+                        <span className="text-xs font-mono-data text-slate-300 font-bold">{s.focusScore || 80}%</span>
+                        <div className="w-full h-1.5 bg-cosmos-600 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${s.focusScore || 80}%`, background: color }} />
+                        </div>
+                      </div>
+
+                      {/* Risk badges */}
+                      <div className="hidden md:flex items-center gap-1.5">
+                        {rep ? (
+                          <>
+                            <RiskBadge risk={rep.dyslexiaRisk} />
+                            <RiskBadge risk={rep.adhdRisk} />
+                          </>
+                        ) : (
+                          <span className="text-[9px] text-slate-600 font-bold">NO REPORT</span>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => generatePDF(s)}
+                          className="w-7 h-7 rounded-lg bg-cosmos-600 border border-cosmos-500 hover:border-blue-500/30 flex items-center justify-center text-slate-400 hover:text-blue-400 transition-all"
+                          title="Download PDF"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <ChevronRight className={`w-4 h-4 text-slate-600 flex-shrink-0 transition-transform ${isSelected ? 'rotate-90' : ''}`} />
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </motion.div>
           </div>
 
-          {/* Student roster list layout */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-indigo-500/10 text-slate-400 font-bold uppercase tracking-wider text-[9px]">
-                  <th className="pb-3 pl-3">Student Name</th>
-                  <th className="pb-3">Grade Level</th>
-                  <th className="pb-3 text-center">Focus Score</th>
-                  <th className="pb-3 text-center">Risk Quotient</th>
-                  <th className="pb-3 text-center">Diagnosis Tier</th>
-                  <th className="pb-3 text-right pr-3">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-900">
-                {filteredStudents.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="text-center py-8 text-slate-500 font-light">No students matched. Add or register more students in database.</td>
-                  </tr>
-                ) : (
-                  filteredStudents.map(student => {
-                    const report = aiReports.find(r => r.studentId === student.id);
-                    const riskTier = report?.dyslexiaRisk || 'LOW';
-                    const riskProb = report?.dyslexiaProb || 15;
-                    const initials = student.name.split(' ').map((n: string) => n.charAt(0)).join('').toUpperCase();
-                    
-                    return (
-                      <tr 
-                        key={student.id}
-                        onClick={() => setSelectedStudent(student)}
-                        className={`hover:bg-indigo-500/5 cursor-pointer transition-colors ${
-                          selectedStudent?.id === student.id ? 'bg-indigo-500/5' : ''
-                        }`}
-                      >
-                        <td className="py-3.5 pl-3">
-                          <div className="flex items-center space-x-3">
-                            <div className={`w-8 h-8 rounded-lg border flex items-center justify-center text-xs font-bold ${getAvatarBg(student.name)}`}>
-                              {initials}
-                            </div>
-                            <div>
-                              <span className="font-bold text-slate-200 block text-xs">{student.name}</span>
-                              <span className="text-[10px] text-slate-500 block leading-tight">{student.email}</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3.5 text-slate-300 font-medium">{student.grade || '4th Grade'}</td>
-                        <td className="py-3.5 text-center font-bold text-slate-200">{student.focusScore}%</td>
-                        <td className="py-3.5 text-center font-bold text-indigo-300">{riskProb}%</td>
-                        <td className="py-3.5 text-center">
-                          <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border ${getRiskColor(riskTier)}`}>
-                            {riskTier}
-                          </span>
-                        </td>
-                        <td className="py-3.5 text-right pr-3" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end space-x-2">
-                            <button
-                              onClick={() => generatePDFReport(student)}
-                              className="p-1.5 rounded-lg bg-indigo-600/10 text-indigo-400 hover:bg-indigo-600 hover:text-white border border-indigo-500/20 hover:border-indigo-500/40 transition-all cursor-pointer"
-                              title="Generate PDF Report"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => setSelectedStudent(student)}
-                              className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 transition-all cursor-pointer"
-                              title="Open Sliding Details Profile"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
+          {/* RIGHT — Student Detail Panel */}
+          <AnimatePresence>
+            {selectedStudent && (
+              <motion.div
+                className="lg:col-span-5 space-y-4"
+                initial={{ opacity: 0, x: 30 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 30 }}
+                transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+              >
+                {/* Detail Header */}
+                <div className="neo-card rounded-3xl p-5 relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-violet-500/5 to-transparent pointer-events-none" />
+                  <div className="relative z-10">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg text-white"
+                          style={{ background: '#3b82f625', border: '1px solid #3b82f640', color: '#3b82f6' }}>
+                          {initials(selectedStudent.name)}
+                        </div>
+                        <div>
+                          <h3 className="font-display font-bold text-lg">{selectedStudent.name}</h3>
+                          <p className="text-xs text-slate-500">{selectedStudent.grade} · {selectedStudent.email}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => { setIsAssignOpen(true); }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl premium-btn-primary text-xs font-bold"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Assign
+                        </button>
+                        <button onClick={() => setSelectedStudent(null)} className="w-7 h-7 rounded-xl bg-cosmos-700 flex items-center justify-center text-slate-400 hover:text-slate-200 transition-colors">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Quick metrics */}
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { label: 'Focus', val: `${selectedStudent.focusScore || 80}%`, color: '#3b82f6' },
+                        { label: 'Streak', val: `${selectedStudent.streakDays || 0}d`, color: '#f97316' },
+                        { label: 'Tests', val: `${selectedStudent.completedTests?.length || 0}/${selectedStudent.assignedTests?.length || 3}`, color: '#10b981' },
+                      ].map(m => (
+                        <div key={m.label} className="bg-cosmos-700/50 rounded-xl p-2.5 text-center border border-cosmos-600">
+                          <div className="text-[10px] text-slate-500 uppercase">{m.label}</div>
+                          <div className="text-sm font-bold font-mono-data mt-0.5" style={{ color: m.color }}>{m.val}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* AI Report Detail */}
+                {activeReport && (
+                  <div className="neo-card rounded-3xl p-5 space-y-4">
+                    <div className="text-[10px] text-violet-400 uppercase tracking-widest font-bold">AI Report · {activeReport.date}</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { label: 'Dyslexia', val: `${activeReport.dyslexiaProb}%`, risk: activeReport.dyslexiaRisk },
+                        { label: 'ADHD', val: `${activeReport.adhdProb}%`, risk: activeReport.adhdRisk },
+                        { label: 'Speech', val: `${activeReport.speechFluencyScore}%`, risk: 'SCORE' },
+                        { label: 'Typing', val: `${activeReport.typingRhythmConsistency}%`, risk: 'SCORE' },
+                      ].map(m => (
+                        <div key={m.label} className="bg-cosmos-700/40 rounded-xl p-3 border border-cosmos-600">
+                          <div className="text-[10px] text-slate-500 uppercase">{m.label}</div>
+                          <div className="text-lg font-black font-mono-data text-white mt-0.5">{m.val}</div>
+                          <RiskBadge risk={m.risk} />
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Timeline chart */}
+                    {selectedStudent.metricsHistory && (
+                      <div className="h-32">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={selectedStudent.metricsHistory} margin={{ top: 5, right: 5, left: -30, bottom: 0 }}>
+                            <defs>
+                              <linearGradient id="detailGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                              </linearGradient>
+                            </defs>
+                            <XAxis dataKey="date" stroke="#475569" fontSize={9} />
+                            <YAxis stroke="#475569" fontSize={9} />
+                            <Tooltip contentStyle={{ background: '#0c1228', border: '1px solid rgba(59,130,246,0.15)', borderRadius: '8px', fontSize: '10px' }} />
+                            <Area type="monotone" dataKey="focusScore" stroke="#3b82f6" strokeWidth={2} fill="url(#detailGrad)" name="Focus" />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </div>
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
 
-        {/* Right 4-cols: Longitudinal analytics chart */}
-        <div className="lg:col-span-4 glass-panel p-6 rounded-2xl space-y-4">
-          <div>
-            <span className="text-[10px] text-purple-400 font-bold uppercase tracking-widest font-space block mb-0.5">Research Grade telemetry</span>
-            <h3 className="text-base font-bold flex items-center space-x-2">
-              <Activity className="w-4.5 h-4.5 text-purple-400" />
-              <span>Longitudinal Cohort Trends</span>
-            </h3>
-          </div>
-          
-          <div className="h-64 w-full pt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={cohortProgress} margin={{ top: 10, right: 5, left: -25, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="cohortFocusGlow" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="cohortWpmGlow" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="name" stroke="#475569" fontSize={9} fontWeight={600} />
-                <YAxis stroke="#475569" fontSize={9} fontWeight={600} domain={[40, 100]} />
-                <Tooltip 
-                  contentStyle={{ background: '#0d1526', border: '1px solid rgba(99, 102, 241, 0.15)', borderRadius: '12px' }}
-                  labelStyle={{ color: '#94a3b8', fontSize: '10px', fontWeight: 'bold' }}
-                />
-                <Area type="monotone" dataKey="focus" stroke="#6366f1" strokeWidth={2.5} fillOpacity={1} fill="url(#cohortFocusGlow)" name="Avg Attention" />
-                <Area type="monotone" dataKey="wpm" stroke="#10b981" strokeWidth={2} strokeDasharray="3 3" fillOpacity={1} fill="url(#cohortWpmGlow)" name="Avg WPM" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-          
-          <div className="text-[10px] text-slate-400 text-center border-t border-indigo-500/5 pt-3.5 select-none flex justify-center space-x-4">
-            <span className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 block" />
-              <span>Cohort Focus</span>
-            </span>
-            <span className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-1 border-t-2 border-dashed border-emerald-500 block" />
-              <span>Cohort Velocity</span>
-            </span>
-          </div>
+                {/* Notes */}
+                <div className="neo-card rounded-3xl p-5 space-y-3">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Clinical Notes</div>
+                  <textarea
+                    value={notes}
+                    onChange={e => setNotes(e.target.value)}
+                    rows={4}
+                    placeholder="Add intervention notes, accommodations, or observations..."
+                    className="w-full bg-cosmos-800 border border-cosmos-500 focus:border-blue-500 rounded-xl p-3.5 text-sm text-slate-200 placeholder-slate-600 outline-none resize-none transition-all"
+                  />
+                  <div className="flex gap-2">
+                    <button onClick={handleSaveNotes} disabled={savingNotes}
+                      className="flex-1 premium-btn-primary py-2.5 rounded-xl text-sm font-bold disabled:opacity-50">
+                      {savingNotes ? 'Saving...' : 'Save Notes'}
+                    </button>
+                    <button onClick={() => generatePDF(selectedStudent)}
+                      className="flex items-center gap-1.5 premium-btn-ghost px-4 py-2.5 rounded-xl text-sm font-bold">
+                      <Download className="w-4 h-4" /> PDF
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-
       </div>
 
-      {/* 60% Sliding Detail Profile Cockpit Panel */}
-      {selectedStudent && (
-        <>
-          {/* Panel Backdrop overlay */}
-          <div 
-            onClick={() => setSelectedStudent(null)}
-            className="fixed inset-0 bg-[#03050c]/85 backdrop-blur-sm z-40 transition-opacity cursor-pointer"
-          />
-
-          {/* Panel Drawer Sidebar */}
-          <div className="fixed top-0 right-0 h-full w-full lg:w-[60%] bg-[#0d1526] border-l border-indigo-500/15 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out p-6 overflow-y-auto space-y-6 flex flex-col justify-between font-sans text-left">
-            <div className="space-y-6">
-              
-              {/* Header Details */}
-              <div className="flex items-center justify-between border-b border-indigo-500/10 pb-4">
-                <div className="flex items-center space-x-3.5">
-                  <div className={`w-11 h-11 rounded-xl border flex items-center justify-center text-sm font-bold ${getAvatarBg(selectedStudent.name)}`}>
-                    {selectedStudent.name.split(' ').map((n: string) => n.charAt(0)).join('').toUpperCase()}
+      {/* ── Assign Test Modal ────────────────────────── */}
+      <AnimatePresence>
+        {isAssignOpen && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={() => setIsAssignOpen(false)} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            >
+              <div className="glass-panel-bright rounded-2xl p-6 w-full max-w-md border border-cosmos-400">
+                <div className="flex items-center justify-between mb-5">
+                  <h3 className="font-display font-bold text-lg">Assign Test</h3>
+                  <button onClick={() => setIsAssignOpen(false)} className="w-7 h-7 rounded-xl bg-cosmos-700 flex items-center justify-center text-slate-400 hover:text-slate-200">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Select Test</label>
+                    <select value={selectedTestId} onChange={e => setSelectedTestId(e.target.value)}
+                      className="w-full bg-cosmos-800 border border-cosmos-500 focus:border-blue-500 rounded-xl py-2.5 px-4 text-sm text-slate-200 outline-none">
+                      <option value="">Choose a test...</option>
+                      {readingTests.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                    </select>
                   </div>
                   <div>
-                    <h3 className="font-display font-extrabold text-slate-100 text-lg">{selectedStudent.name}</h3>
-                    <div className="flex items-center space-x-2 text-[10px] text-slate-400 mt-0.5">
-                      <span>{selectedStudent.grade || '4th Grade'}</span>
-                      <span>•</span>
-                      <span>{selectedStudent.email}</span>
-                    </div>
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Due Date</label>
+                    <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
+                      className="w-full bg-cosmos-800 border border-cosmos-500 focus:border-blue-500 rounded-xl py-2.5 px-4 text-sm text-slate-200 outline-none" />
                   </div>
-                </div>
-                <button 
-                  onClick={() => setSelectedStudent(null)}
-                  className="p-1.5 rounded-lg hover:bg-slate-900 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
-                >
-                  <X className="w-5.5 h-5.5" />
-                </button>
-              </div>
-
-              {/* Cognitive Gauge Meters Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                
-                {/* Gauge 1: Risk */}
-                <div className="p-4 bg-slate-950/40 border border-slate-900 rounded-2xl flex flex-col items-center justify-center text-center relative overflow-hidden">
-                  <span className="text-[9px] text-slate-500 uppercase tracking-widest font-extrabold block mb-2">Dyslexia Risk</span>
-                  <div className={`text-base font-extrabold px-3 py-1.5 rounded-xl border flex items-center gap-1.5 ${getRiskColor(activeReport?.dyslexiaRisk || 'MEDIUM')}`}>
-                    <AlertTriangle className="w-4 h-4" />
-                    <span>{activeReport?.dyslexiaRisk || 'MEDIUM'} ({activeReport?.dyslexiaProb || 48}%)</span>
-                  </div>
-                </div>
-
-                {/* Gauge 2: Focus Consistency */}
-                <div className="p-4 bg-slate-950/40 border border-slate-900 rounded-2xl flex flex-col items-center justify-center text-center">
-                  <span className="text-[9px] text-slate-500 uppercase tracking-widest font-extrabold block mb-2">Attention Rating</span>
-                  <div className="text-base font-extrabold text-emerald-400 px-3 py-1.5 rounded-xl bg-emerald-500/5 border border-emerald-500/20 flex items-center gap-1.5">
-                    <CheckCircle className="w-4 h-4" />
-                    <span>{selectedStudent.focusScore}% Focus</span>
-                  </div>
-                </div>
-
-                {/* Gauge 3: Speech Fluency */}
-                <div className="p-4 bg-slate-950/40 border border-slate-900 rounded-2xl flex flex-col items-center justify-center text-center">
-                  <span className="text-[9px] text-slate-500 uppercase tracking-widest font-extrabold block mb-2">Speech Fluency</span>
-                  <div className="text-base font-extrabold text-cyan-400 px-3 py-1.5 rounded-xl bg-cyan-500/5 border border-cyan-500/20 flex items-center gap-1.5">
-                    <Mic className="w-4 h-4" />
-                    <span>{activeReport?.speechFluencyScore || 82}% Score</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Assignment Deck & Timeline logs */}
-              <div className="grid md:grid-cols-2 gap-6 pt-2">
-                
-                {/* Left side: Assign Test Controls */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-indigo-500/10 pb-2">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center space-x-1.5">
-                      <FileSignature className="w-4 h-4 text-indigo-400" />
-                      <span>Assign Screening Test</span>
-                    </h4>
-                  </div>
-                  
-                  {isAssignModalOpen ? (
-                    <form onSubmit={handleAssignTestSubmit} className="p-4 rounded-2xl bg-slate-950/40 border border-indigo-500/10 space-y-4">
-                      
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Select Exercise catalog</label>
-                        <select
-                          required
-                          value={selectedTestId}
-                          onChange={e => setSelectedTestId(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-xs outline-none focus:border-indigo-500 text-slate-200"
-                        >
-                          <option value="">-- Select Test --</option>
-                          {readingTests.map(t => (
-                            <option key={t.id} value={t.id}>
-                              {t.title} ({t.difficulty})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Target Due Date</label>
-                        <div className="relative">
-                          <input
-                            type="date"
-                            required
-                            value={dueDate}
-                            onChange={e => setDueDate(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-xs outline-none focus:border-indigo-500 text-slate-200"
-                          />
-                        </div>
-                      </div>
-
-                      {assigningSuccess && (
-                        <div className="text-[11px] font-bold text-emerald-400 text-center leading-normal">
-                          ✔ Test assigned! Notification dispatched.
-                        </div>
-                      )}
-
-                      <div className="flex space-x-2 pt-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setIsAssignModalOpen(false)}
-                          className="flex-1 py-2 rounded-lg border border-slate-800 text-slate-400 hover:text-slate-200 text-xs font-bold transition-all cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="submit"
-                          disabled={assigningLoading || !selectedTestId}
-                          className="flex-1 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold transition-all cursor-pointer"
-                        >
-                          {assigningLoading ? 'Assigning...' : 'Assign'}
-                        </button>
-                      </div>
-
-                    </form>
-                  ) : (
-                    <div className="p-5 rounded-2xl bg-slate-950/40 border border-slate-900 text-center flex flex-col items-center justify-center space-y-3 min-h-[140px]">
-                      <BookOpen className="w-7 h-7 text-slate-600" />
-                      <p className="text-[11px] text-slate-500 max-w-[200px] leading-relaxed">
-                        Queues visual dyslexia/ADHD screening exercises directly to student accounts.
-                      </p>
-                      <button
-                        onClick={() => setIsAssignModalOpen(true)}
-                        className="py-2 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-[10px] font-bold uppercase tracking-wider text-white flex items-center space-x-1.5 cursor-pointer shadow-md transition-all active:scale-98"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Assign Exercises</span>
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Assigned list roster */}
-                  <div className="space-y-2">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">Active Assigned Roster</span>
-                    {selectedStudent.assignedTests && selectedStudent.assignedTests.length > 0 ? (
-                      selectedStudent.assignedTests.map((tId: string) => {
-                        const match = readingTests.find(t => t.id === tId);
-                        if (!match) return null;
-                        return (
-                          <div key={tId} className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-900 text-xs flex items-center justify-between">
-                            <span className="font-semibold text-slate-300">{match.title}</span>
-                            <span className="text-[9px] font-extrabold text-slate-500 uppercase">{match.difficulty}</span>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <span className="text-[10px] text-slate-600 block leading-tight">No active assignments on file.</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Right side: Timeline & history logs */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-indigo-500/10 pb-2">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center space-x-1.5">
-                      <Clock className="w-4 h-4 text-indigo-400" />
-                      <span>Chronological Metrics Log</span>
-                    </h4>
-                  </div>
-                  
-                  <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                    {selectedStudent.metricsHistory ? (
-                      selectedStudent.metricsHistory.map((metric: any, index: number) => (
-                        <div key={index} className="p-3 bg-slate-950/60 rounded-xl border border-slate-900 space-y-1.5 text-xs">
-                          <div className="flex justify-between items-center text-[10px] font-bold text-slate-500">
-                            <span>SESSION: {metric.date || 'May 30'}</span>
-                            <span className="text-emerald-400">SUCCESS</span>
-                          </div>
-                          
-                          <div className="grid grid-cols-2 gap-2 text-[11px] leading-tight">
-                            <div className="text-slate-400 font-light">WPM Speed: <span className="text-slate-200 font-bold">{metric.wpm || 74} WPM</span></div>
-                            <div className="text-slate-400 font-light">Attention Score: <span className="text-slate-200 font-bold">{metric.focusScore || 92}%</span></div>
-                            <div className="text-slate-400 font-light col-span-2">Distraction events: <span className="text-rose-400 font-bold">{metric.distractionEvents || 0} Skips</span></div>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-xs text-slate-500 py-4 text-center">No telemetry history logged.</p>
-                    )}
-                  </div>
-                </div>
-
-              </div>
-
-              {/* Educator Clinical Notes Textarea Editor */}
-              <div className="space-y-3.5 pt-4 border-t border-indigo-500/10">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center space-x-1.5">
-                    <FileSignature className="w-4 h-4 text-indigo-400" />
-                    <span>Clinical Notations & Observations</span>
-                  </h4>
-                  {notesSuccess && (
-                    <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full animate-bounce">
-                      ✔ Notes Synced to DB
-                    </span>
-                  )}
-                </div>
-
-                <div className="relative">
-                  <textarea
-                    rows={4}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Enter professional clinical summaries, visual track deviations, or customized classroom accommodations here..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 placeholder-slate-600 focus:border-indigo-500 outline-none transition-all resize-none"
-                  />
-                </div>
-
-                <div className="flex justify-end pt-1">
-                  <button
-                    onClick={handleSaveNotes}
-                    disabled={savingNotes || !activeReport}
-                    className="py-2.5 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs shadow-lg shadow-indigo-600/10 cursor-pointer flex items-center space-x-1.5 transition-all"
-                  >
-                    {savingNotes ? (
-                      <span>Syncing database...</span>
-                    ) : (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        <span>Save Observational Summary</span>
-                      </>
-                    )}
+                  <button onClick={handleAssignTest} disabled={assigningLoading || !selectedTestId}
+                    className="w-full premium-btn-primary py-3 rounded-xl text-sm font-bold disabled:opacity-50">
+                    {assigningLoading ? 'Assigning...' : 'Assign Test'}
                   </button>
                 </div>
               </div>
-
-            </div>
-
-            {/* Bottom Actions footer */}
-            <div className="pt-6 border-t border-indigo-500/10 flex items-center justify-between">
-              <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Secure Telemetry Panel</span>
-              <div className="flex space-x-3">
-                <button
-                  onClick={() => generatePDFReport(selectedStudent)}
-                  className="py-2.5 px-5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold shadow-md shadow-indigo-600/10 cursor-pointer flex items-center space-x-1.5 transition-all active:scale-98"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Generate AI PDF Diagnostic</span>
-                </button>
-                
-                <button
-                  onClick={() => setSelectedStudent(null)}
-                  className="py-2.5 px-5 rounded-xl border border-slate-800 text-slate-400 hover:text-slate-200 text-xs font-bold cursor-pointer transition-colors"
-                >
-                  Close Panel
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </>
-      )}
-
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
